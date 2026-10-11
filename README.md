@@ -482,7 +482,7 @@ src/compositional_rl/
 │   ├── __init__.py
 │   └── runner_cfg.py    # Configuration for upstream OnPolicyRunner
 └── mdp/                # Reusable network architectures and loss criteria
-    ├── network/        # pointnet.py, transformer.py, network_cfg.py
+    ├── network/        # pointnet.py, transformer.py, attention_map.py, network_cfg.py
     └── loss/           # loss.py
 ```
 
@@ -507,7 +507,7 @@ same configs; the full example preserves its configuration utilities without cou
 
 ## Reusable custom terms
 
-Use `compositional_rl.mdp.network` for the bundled PointNet and Transformer terms, and
+Use `compositional_rl.mdp.network` for the bundled PointNet, Transformer, and AME terms, and
 `compositional_rl.mdp.loss` for reusable criteria. Managers and common config contracts stay in
 `compositional_rl.network` and `compositional_rl.loss`. Task-specific implementations can live in
 `your_project.mdp` and be selected with `class_name="your_project.module:YourNetwork"` or a loss
@@ -517,6 +517,112 @@ See [the custom-term guide](docs/custom_terms.md) for input layouts, custom enco
 and export requirements, and [the complete perception config](examples/perception.py) for switching
 PointNet/Transformer terms with standard dataclasses. The PointNet encoder retains the supplied
 IsaacLab implementation's masked pooling behavior and attribution, with no simulator imports.
+
+## Attention-based map encoding (AME)
+
+`AttentionMapNetworkCfg` adds CNN map tokens and robot-state-conditioned cross-attention, with
+optional global context. It accepts a structured `[B, H, W, 3]` XYZ map, or a flattened map with an
+explicit `map_shape`. The other inputs are vector observations used to form the attention query.
+Unlike the generic Transformer term, this term uses robot-state queries to attend to map tokens.
+
+This complete IsaacLab config shares one AME term between actor and critic. The environment must
+provide `policy`, `critic`, and `elevation_map` observation groups. No auxiliary labels are required.
+Save it as a task agent config and select `MyCompositionalPPORunnerCfg` through the existing
+`rsl_rl_cfg_entry_point`. The executable copy is [examples/isaaclab_attention_map.py](examples/isaaclab_attention_map.py).
+
+```python
+# Copyright (c) 2021-2026, ETH Zurich and NVIDIA CORPORATION
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+"""Complete IsaacLab AME agent config; policy, critic, and elevation_map are observation groups."""
+
+from compositional_rl.algorithm import CompositionalPPOAlgorithmCfg
+from compositional_rl.loss import LossesCfg
+from compositional_rl.mdp.network import AttentionMapNetworkCfg
+from compositional_rl.network import ActorHeadCfg, CriticHeadCfg, NetworkCfg
+from compositional_rl.runner import CompositionalRunnerCfg
+from isaaclab.utils.configclass import configclass
+
+
+@configclass
+class MyNetworksCfg(NetworkCfg):
+    """Share one actor-visible AME term across the actor and critic."""
+
+    map_encoder: AttentionMapNetworkCfg | None = None
+
+
+@configclass
+class MyCompositionalPPORunnerCfg(CompositionalRunnerCfg):
+    """Select this class with the task's existing rsl_rl_cfg_entry_point."""
+
+    num_steps_per_env = 24
+    max_iterations = 30_000
+    save_interval = 500
+    networks = MyNetworksCfg(
+        actor=ActorHeadCfg(
+            input=["policy", "map_encoder"],
+            hidden_dims=[512, 256, 128],
+            activation="elu",
+            obs_normalization=False,
+            distribution_cfg=ActorHeadCfg.GaussianDistributionCfg(init_std=1.0),
+        ),
+        critic=CriticHeadCfg(
+            input=["critic", "map_encoder"],
+            hidden_dims=[512, 256, 128],
+            activation="elu",
+            obs_normalization=False,
+        ),
+        map_encoder=AttentionMapNetworkCfg(
+            input=["elevation_map", "policy"],
+            map_input="elevation_map",
+            map_shape=(33, 21, 3),
+            output_dim=64,
+            feature_dim=64,
+            num_heads=16,
+            cnn_channels=16,
+            cnn_downsample=True,
+            cnn_normalization="batch",
+            attach_global=False,
+            hidden_dims=[],
+            obs_normalization=False,
+            frozen=False,
+            pretrained_cfg=None,
+        ),
+    )
+    loss = LossesCfg()  # PPO trains the encoder; no auxiliary labels are required.
+    algorithm = CompositionalPPOAlgorithmCfg(
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.005,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=1.0e-3,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+        symmetry_cfg=None,
+    )
+    logger = "wandb"
+    wandb_project = "attention_map_ppo"
+    experiment_name = "attention_map_ppo"
+```
+
+Declare `attach_global=True, output_dim=128` for global context with `feature_dim=64` and no readout.
+Declare nonempty `hidden_dims` if you want a learned projection to a different `output_dim`.
+`obs_normalization` applies only to query vectors. The XYZ map must contain finite values with a
+consistent, task-defined coordinate frame and grid convention.
+
+The shared query uses actor-visible observations; the critic adds its own inputs in its head.
+The reference uses distinct actor/critic queries with partially shared weights, which this shared
+feature configuration does not reproduce exactly. Separate AME terms can use distinct queries,
+but their internal weights are independent. See [the AME guide](docs/attention_map.md) for sharing
+semantics, diagnostic attention weights, checkpoints, exports, and reproduction limits, or use
+[the simulator-independent example](examples/attention_map.py) outside IsaacLab.
 
 ## Recurrent heads
 

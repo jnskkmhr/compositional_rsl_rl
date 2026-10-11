@@ -9,6 +9,7 @@ mdp/
 │   ├── __init__.py
 │   ├── pointnet.py
 │   ├── transformer.py
+│   ├── attention_map.py
 │   └── network_cfg.py
 └── loss/
     ├── __init__.py
@@ -75,6 +76,14 @@ actor/critic `input` lists. See [the complete perception example](../examples/pe
 switches encoders with `make_config("pointnet")` or `make_config("transformer")` and includes an
 optional supervised loss. Its labels are three task-defined values in `perception_target`; the
 library does not invent labels from the point cloud.
+
+## Attention-based map encoding
+
+For a map conditioned on robot-state vectors, use `AttentionMapNetworkCfg`. It implements CNN map
+tokens and state-query cross-attention with multiple inputs. See [the AME guide](attention_map.md)
+and [complete IsaacLab config](../examples/isaaclab_attention_map.py) for the full configuration,
+input layouts, sharing semantics, and attention visualization. The single-input `TensorNetwork`
+adapter remains available for other custom encoders.
 
 ## Implement a custom network
 

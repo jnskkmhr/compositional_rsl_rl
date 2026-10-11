@@ -5,11 +5,15 @@
 
 """Reusable network implementations and their configurations."""
 
-from .network_cfg import PointNetNetworkCfg, TransformerNetworkCfg
+from .attention_map import AttentionMapEncoder, AttentionMapNetwork
+from .network_cfg import AttentionMapNetworkCfg, PointNetNetworkCfg, TransformerNetworkCfg
 from .pointnet import PointNetEncoder, PointNetNetwork
 from .transformer import TransformerEncoder, TransformerNetwork
 
 __all__ = [
+    "AttentionMapEncoder",
+    "AttentionMapNetwork",
+    "AttentionMapNetworkCfg",
     "PointNetEncoder",
     "PointNetNetwork",
     "PointNetNetworkCfg",
