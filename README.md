@@ -92,21 +92,21 @@ from isaaclab.utils.configclass import configclass
 
 
 @configclass
-class G1NetworksCfg(NetworkCfg):
+class MyNetworksCfg(NetworkCfg):
     """Actor and critic are peers of the learned state estimator."""
 
     state_estimator: MLPNetworkCfg | None = None
 
 
 @configclass
-class G1LossesCfg(LossesCfg):
+class MyLossesCfg(LossesCfg):
     """Named loss terms are independent of network construction."""
 
     estimator_loss: SupervisedLossCfg | None = None
 
 
 @configclass
-class G1RoughCompositionalPPORunnerCfg(CompositionalRunnerCfg):
+class MyRoughCompositionalPPORunnerCfg(CompositionalRunnerCfg):
     """Select through the task's existing rsl_rl_cfg_entry_point; keep train/play scripts unchanged."""
 
     num_steps_per_env = 24
@@ -114,7 +114,7 @@ class G1RoughCompositionalPPORunnerCfg(CompositionalRunnerCfg):
     save_interval = 500
 
     # Raw observation dependencies are inferred from each network term's input list.
-    networks = G1NetworksCfg(
+    networks = MyNetworksCfg(
         actor=ActorHeadCfg(
             input=["policy", "state_estimator", "command"],
             hidden_dims=[512, 256, 128],
@@ -139,7 +139,7 @@ class G1RoughCompositionalPPORunnerCfg(CompositionalRunnerCfg):
         ),
     )
 
-    loss = G1LossesCfg(
+    loss = MyLossesCfg(
         estimator_loss=SupervisedLossCfg(
             trains=["state_estimator"],
             prediction="state_estimator",
@@ -179,7 +179,7 @@ the class above. For a task package named `my_project.tasks.g1`, the relevant en
 
 ```python
 {
-    "rsl_rl_cfg_entry_point": ("my_project.tasks.g1.agents.compositional_ppo_cfg:G1RoughCompositionalPPORunnerCfg"),
+    "rsl_rl_cfg_entry_point": ("my_project.tasks.g1.agents.compositional_ppo_cfg:MyRoughCompositionalPPORunnerCfg"),
 }
 ```
 
@@ -200,8 +200,8 @@ and copy its `networks` or `loss` defaults rather than the original base default
 
 ```python
 @configclass
-class G1SmallMLPPPORunnerCfg(G1RoughCompositionalPPORunnerCfg):
-    networks = G1RoughCompositionalPPORunnerCfg().networks
+class MySmallMLPPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
+    networks = MyRoughCompositionalPPORunnerCfg().networks
     networks.actor.hidden_dims = [256, 128]
     networks.critic.hidden_dims = [256, 128]
     networks.state_estimator.hidden_dims = [128, 64]
@@ -218,8 +218,8 @@ from compositional_rl.mdp.network import PointNetNetworkCfg
 
 
 @configclass
-class G1PointNetPPORunnerCfg(G1RoughCompositionalPPORunnerCfg):
-    networks = G1RoughCompositionalPPORunnerCfg().networks
+class MyPointNetPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
+    networks = MyRoughCompositionalPPORunnerCfg().networks
     networks.state_estimator = PointNetNetworkCfg(
         input=["points"],
         output_dim=3,
@@ -243,8 +243,8 @@ from compositional_rl.mdp.network import TransformerNetworkCfg
 
 
 @configclass
-class G1TransformerPPORunnerCfg(G1RoughCompositionalPPORunnerCfg):
-    networks = G1RoughCompositionalPPORunnerCfg().networks
+class MyTransformerPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
+    networks = MyRoughCompositionalPPORunnerCfg().networks
     networks.state_estimator = TransformerNetworkCfg(
         input=["points"],
         output_dim=3,
@@ -271,8 +271,8 @@ from compositional_rl.network import RecurrentActorHeadCfg, RecurrentCriticHeadC
 
 
 @configclass
-class G1RecurrentPPORunnerCfg(G1RoughCompositionalPPORunnerCfg):
-    networks = G1RoughCompositionalPPORunnerCfg().networks
+class MyRecurrentPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
+    networks = MyRoughCompositionalPPORunnerCfg().networks
     networks.actor = RecurrentActorHeadCfg(
         input=["policy", "state_estimator", "command"],
         hidden_dims=[256, 128],
@@ -306,8 +306,8 @@ create new labels.
 
 ```python
 @configclass
-class G1HuberPPORunnerCfg(G1RoughCompositionalPPORunnerCfg):
-    loss = G1RoughCompositionalPPORunnerCfg().loss
+class MyHuberPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
+    loss = MyRoughCompositionalPPORunnerCfg().loss
     loss.estimator_loss.loss_fn = "huber"
     loss.estimator_loss.params = {"delta": 0.5}
     loss.estimator_loss.weight = 0.1
@@ -325,8 +325,8 @@ provided in the library's `mdp/loss` collection:
 
 ```python
 @configclass
-class G1CosinePPORunnerCfg(G1RoughCompositionalPPORunnerCfg):
-    loss = G1RoughCompositionalPPORunnerCfg().loss
+class MyCosinePPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
+    loss = MyRoughCompositionalPPORunnerCfg().loss
     loss.estimator_loss.loss_fn = "compositional_rl.mdp.loss:cosine_distance"
     loss.estimator_loss.params = {"eps": 1.0e-8}
 ```
@@ -345,8 +345,8 @@ def scaled_absolute_error(prediction, target, scale=1.0):
 
 
 @configclass
-class G1CustomLossPPORunnerCfg(G1RoughCompositionalPPORunnerCfg):
-    loss = G1RoughCompositionalPPORunnerCfg().loss
+class MyCustomLossPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
+    loss = MyRoughCompositionalPPORunnerCfg().loss
     loss.estimator_loss.loss_fn = scaled_absolute_error
     loss.estimator_loss.params = {"scale": 0.5}
 ```
@@ -360,8 +360,8 @@ network terms and select them through `trains`.
 
 ```python
 @configclass
-class G1SeparateEstimatorPPORunnerCfg(G1RoughCompositionalPPORunnerCfg):
-    loss = G1RoughCompositionalPPORunnerCfg().loss
+class MySeparateEstimatorPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
+    loss = MyRoughCompositionalPPORunnerCfg().loss
     loss.estimator_loss.optimizer = "separate"
     loss.estimator_loss.learning_rate = 1.0e-3
 ```
@@ -573,21 +573,21 @@ from isaaclab.utils.configclass import configclass
 
 
 @configclass
-class G1NetworksCfg(NetworkCfg):
+class MyNetworksCfg(NetworkCfg):
     """Actor and critic are peers of the learned state estimator."""
 
     state_estimator: MLPNetworkCfg | None = None
 
 
 @configclass
-class G1LossesCfg(LossesCfg):
+class MyLossesCfg(LossesCfg):
     """Named loss terms are independent of network construction."""
 
     estimator_loss: SupervisedLossCfg | None = None
 
 
 @configclass
-class G1FrozenEstimatorPPORunnerCfg(CompositionalRunnerCfg):
+class MyFrozenEstimatorPPORunnerCfg(CompositionalRunnerCfg):
     """Select through the task's existing rsl_rl_cfg_entry_point; keep train/play scripts unchanged."""
 
     num_steps_per_env = 24
@@ -595,7 +595,7 @@ class G1FrozenEstimatorPPORunnerCfg(CompositionalRunnerCfg):
     save_interval = 500
 
     # Raw observation dependencies are inferred from each network term's input list.
-    networks = G1NetworksCfg(
+    networks = MyNetworksCfg(
         actor=ActorHeadCfg(
             input=["policy", "state_estimator", "command"],
             hidden_dims=[512, 256, 128],
@@ -624,7 +624,7 @@ class G1FrozenEstimatorPPORunnerCfg(CompositionalRunnerCfg):
         ),
     )
 
-    loss = G1LossesCfg(estimator_loss=None)
+    loss = MyLossesCfg(estimator_loss=None)
     algorithm = CompositionalPPOAlgorithmCfg(
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
@@ -648,7 +648,7 @@ class G1FrozenEstimatorPPORunnerCfg(CompositionalRunnerCfg):
     experiment_name = "g1_29dof_rigid_rough_frozen_estimator_ppo"
 ```
 
-Select `G1FrozenEstimatorPPORunnerCfg` through your task's `rsl_rl_cfg_entry_point`. The actor and
+Select `MyFrozenEstimatorPPORunnerCfg` through your task's `rsl_rl_cfg_entry_point`. The actor and
 critic train with PPO while the loaded estimator remains frozen. To train the pretrained estimator
 instead, declare `frozen=False`; add a `SupervisedLossCfg(...)` in the `loss` constructor only if you
 also want supervised training.
