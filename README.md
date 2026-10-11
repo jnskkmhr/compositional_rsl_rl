@@ -106,7 +106,7 @@ class MyLossesCfg(LossesCfg):
 
 
 @configclass
-class MyRoughCompositionalPPORunnerCfg(CompositionalRunnerCfg):
+class MyCompositionalPPORunnerCfg(CompositionalRunnerCfg):
     """Select through the task's existing rsl_rl_cfg_entry_point; keep train/play scripts unchanged."""
 
     num_steps_per_env = 24
@@ -179,7 +179,7 @@ the class above. For a task package named `my_project.tasks.g1`, the relevant en
 
 ```python
 {
-    "rsl_rl_cfg_entry_point": ("my_project.tasks.g1.agents.compositional_ppo_cfg:MyRoughCompositionalPPORunnerCfg"),
+    "rsl_rl_cfg_entry_point": ("my_project.tasks.g1.agents.compositional_ppo_cfg:MyCompositionalPPORunnerCfg"),
 }
 ```
 
@@ -200,8 +200,8 @@ and copy its `networks` or `loss` defaults rather than the original base default
 
 ```python
 @configclass
-class MySmallMLPPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
-    networks = MyRoughCompositionalPPORunnerCfg().networks
+class MySmallMLPPPORunnerCfg(MyCompositionalPPORunnerCfg):
+    networks = MyCompositionalPPORunnerCfg().networks
     networks.actor.hidden_dims = [256, 128]
     networks.critic.hidden_dims = [256, 128]
     networks.state_estimator.hidden_dims = [128, 64]
@@ -218,8 +218,8 @@ from compositional_rl.mdp.network import PointNetNetworkCfg
 
 
 @configclass
-class MyPointNetPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
-    networks = MyRoughCompositionalPPORunnerCfg().networks
+class MyPointNetPPORunnerCfg(MyCompositionalPPORunnerCfg):
+    networks = MyCompositionalPPORunnerCfg().networks
     networks.state_estimator = PointNetNetworkCfg(
         input=["points"],
         output_dim=3,
@@ -243,8 +243,8 @@ from compositional_rl.mdp.network import TransformerNetworkCfg
 
 
 @configclass
-class MyTransformerPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
-    networks = MyRoughCompositionalPPORunnerCfg().networks
+class MyTransformerPPORunnerCfg(MyCompositionalPPORunnerCfg):
+    networks = MyCompositionalPPORunnerCfg().networks
     networks.state_estimator = TransformerNetworkCfg(
         input=["points"],
         output_dim=3,
@@ -271,8 +271,8 @@ from compositional_rl.network import RecurrentActorHeadCfg, RecurrentCriticHeadC
 
 
 @configclass
-class MyRecurrentPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
-    networks = MyRoughCompositionalPPORunnerCfg().networks
+class MyRecurrentPPORunnerCfg(MyCompositionalPPORunnerCfg):
+    networks = MyCompositionalPPORunnerCfg().networks
     networks.actor = RecurrentActorHeadCfg(
         input=["policy", "state_estimator", "command"],
         hidden_dims=[256, 128],
@@ -306,8 +306,8 @@ create new labels.
 
 ```python
 @configclass
-class MyHuberPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
-    loss = MyRoughCompositionalPPORunnerCfg().loss
+class MyHuberPPORunnerCfg(MyCompositionalPPORunnerCfg):
+    loss = MyCompositionalPPORunnerCfg().loss
     loss.estimator_loss.loss_fn = "huber"
     loss.estimator_loss.params = {"delta": 0.5}
     loss.estimator_loss.weight = 0.1
@@ -325,8 +325,8 @@ provided in the library's `mdp/loss` collection:
 
 ```python
 @configclass
-class MyCosinePPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
-    loss = MyRoughCompositionalPPORunnerCfg().loss
+class MyCosinePPORunnerCfg(MyCompositionalPPORunnerCfg):
+    loss = MyCompositionalPPORunnerCfg().loss
     loss.estimator_loss.loss_fn = "compositional_rl.mdp.loss:cosine_distance"
     loss.estimator_loss.params = {"eps": 1.0e-8}
 ```
@@ -345,8 +345,8 @@ def scaled_absolute_error(prediction, target, scale=1.0):
 
 
 @configclass
-class MyCustomLossPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
-    loss = MyRoughCompositionalPPORunnerCfg().loss
+class MyCustomLossPPORunnerCfg(MyCompositionalPPORunnerCfg):
+    loss = MyCompositionalPPORunnerCfg().loss
     loss.estimator_loss.loss_fn = scaled_absolute_error
     loss.estimator_loss.params = {"scale": 0.5}
 ```
@@ -360,8 +360,8 @@ network terms and select them through `trains`.
 
 ```python
 @configclass
-class MySeparateEstimatorPPORunnerCfg(MyRoughCompositionalPPORunnerCfg):
-    loss = MyRoughCompositionalPPORunnerCfg().loss
+class MySeparateEstimatorPPORunnerCfg(MyCompositionalPPORunnerCfg):
+    loss = MyCompositionalPPORunnerCfg().loss
     loss.estimator_loss.optimizer = "separate"
     loss.estimator_loss.learning_rate = 1.0e-3
 ```
