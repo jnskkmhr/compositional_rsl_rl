@@ -21,7 +21,7 @@ The reference's architecture and configuration are described in its
 ## Inputs and configuration
 
 ```python
-from compositional_rl.mdp.network import AttentionMapNetworkCfg
+from compositional_rsl_rl.mdp.network import AttentionMapNetworkCfg
 
 map_encoder = AttentionMapNetworkCfg(
     input=["elevation_map", "policy"],

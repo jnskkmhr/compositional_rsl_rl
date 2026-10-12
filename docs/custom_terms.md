@@ -1,6 +1,6 @@
 # Reusable network and loss terms
 
-The installed library's term collection lives in `src/compositional_rl/mdp/`:
+The installed library's term collection lives in `src/compositional_rsl_rl/mdp/`:
 
 ```text
 mdp/
@@ -28,7 +28,7 @@ you do not need to edit a registry, either manager, the runner, or this library.
 ## PointNet and Transformer
 
 ```python
-from compositional_rl.mdp.network import PointNetNetworkCfg, TransformerNetworkCfg
+from compositional_rsl_rl.mdp.network import PointNetNetworkCfg, TransformerNetworkCfg
 
 pointnet = PointNetNetworkCfg(
     input=["points"],  # One observation tensor: [batch, num_points, 4].
@@ -93,7 +93,7 @@ For example, save this in `my_project/mdp/network/patch.py`:
 ```python
 import math
 from torch import nn
-from compositional_rl.network import TensorNetwork
+from compositional_rsl_rl.network import TensorNetwork
 
 
 class PatchEncoder(TensorNetwork):
@@ -108,7 +108,7 @@ class PatchEncoder(TensorNetwork):
 Configure it from any task package:
 
 ```python
-from compositional_rl.network import TensorNetworkCfg
+from compositional_rsl_rl.network import TensorNetworkCfg
 
 patch_encoder = TensorNetworkCfg(
     class_name="my_project.mdp.network.patch:PatchEncoder",
@@ -150,7 +150,7 @@ def absolute_error(prediction, target):
 Then use the common loss config:
 
 ```python
-from compositional_rl.loss import SupervisedLossCfg
+from compositional_rsl_rl.loss import SupervisedLossCfg
 
 loss = SupervisedLossCfg(
     trains=["perception"],
@@ -162,7 +162,7 @@ loss = SupervisedLossCfg(
 )
 ```
 
-The bundled `compositional_rl.mdp.loss:cosine_distance` is another example, useful when the direction
+The bundled `compositional_rsl_rl.mdp.loss:cosine_distance` is another example, useful when the direction
 of feature vectors is meaningful. It accepts `params={"eps": 1.0e-8}`. A direct callable is also
 accepted in `loss_fn`. Criteria receive matching prediction/target shapes after recurrent padding
 is removed; targets are detached. Return one finite scalar tensor connected to the prediction.

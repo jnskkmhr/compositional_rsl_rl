@@ -15,9 +15,9 @@ from tensordict import TensorDict
 import onnx
 import onnxruntime
 import pytest
-from compositional_rl.loss import LossManager
+from compositional_rsl_rl.loss import LossManager
 
-from compositional_rl import CompositionalPPO, NetworkManager
+from compositional_rsl_rl import CompositionalPPO, NetworkManager
 from rsl_rl.runners import OnPolicyRunner
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import unpad_trajectories
@@ -58,7 +58,7 @@ def config(recurrent: str | None = None, separate: bool = False) -> dict:
             }
         },
         "algorithm": {
-            "class_name": "compositional_rl:CompositionalPPO",
+            "class_name": "compositional_rsl_rl:CompositionalPPO",
             "num_learning_epochs": 1,
             "num_mini_batches": 2,
             "schedule": "fixed",

@@ -16,10 +16,10 @@ from tensordict import TensorDict
 
 import onnxruntime
 import pytest
-from compositional_rl.mdp.network import AttentionMapEncoder, AttentionMapNetwork, AttentionMapNetworkCfg
+from compositional_rsl_rl.mdp.network import AttentionMapEncoder, AttentionMapNetwork, AttentionMapNetworkCfg
 from test_composition import Environment, config, rollout
 
-from compositional_rl import CompositionalPPO, NetworkManager
+from compositional_rsl_rl import CompositionalPPO, NetworkManager
 from rsl_rl.runners import OnPolicyRunner
 
 

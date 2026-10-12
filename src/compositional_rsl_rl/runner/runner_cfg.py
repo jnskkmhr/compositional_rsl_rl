@@ -7,9 +7,9 @@
 
 from dataclasses import dataclass, field
 
-from compositional_rl.algorithm.algorithm_cfg import CompositionalPPOAlgorithmCfg
-from compositional_rl.loss.loss_cfg import LossesCfg
-from compositional_rl.network.network_cfg import NetworkCfg
+from compositional_rsl_rl.algorithm.algorithm_cfg import CompositionalPPOAlgorithmCfg
+from compositional_rsl_rl.loss.loss_cfg import LossesCfg
+from compositional_rsl_rl.network.network_cfg import NetworkCfg
 
 
 @dataclass(kw_only=True)
@@ -35,11 +35,11 @@ class CompositionalRunnerCfg:
     clip_actions: float | None = None
     check_for_nan: bool = True
     save_interval: int = 500
-    experiment_name: str = "compositional_rl"
+    experiment_name: str = "compositional_rsl_rl"
     run_name: str = ""
     logger: str = "tensorboard"
-    neptune_project: str = "compositional_rl"
-    wandb_project: str = "compositional_rl"
+    neptune_project: str = "compositional_rsl_rl"
+    wandb_project: str = "compositional_rsl_rl"
     resume: bool = False
     load_run: str = ".*"
     load_checkpoint: str = "model_.*.pt"

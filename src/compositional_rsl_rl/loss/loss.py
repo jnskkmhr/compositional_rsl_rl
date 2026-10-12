@@ -12,7 +12,7 @@ import math
 import torch
 import torch.nn.functional as functional
 
-from compositional_rl.network import NetworkManager
+from compositional_rsl_rl.network import NetworkManager
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import resolve_callable, unpad_trajectories
 

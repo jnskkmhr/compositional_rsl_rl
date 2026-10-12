@@ -31,12 +31,12 @@ def test_configured_training_without_simulator_imports() -> None:
         import torch
         from test_composition import Environment
         from rsl_rl.runners import OnPolicyRunner
-        from compositional_rl.algorithm.algorithm_cfg import CompositionalPPOAlgorithmCfg
-        from compositional_rl.loss.loss_cfg import LossesCfg, SupervisedLossCfg
-        from compositional_rl.network.network_cfg import MLPNetworkCfg, NetworkCfg
-        from compositional_rl.runner.runner_cfg import CompositionalRunnerCfg
-        from compositional_rl.mdp.network import AttentionMapNetworkCfg, PointNetNetworkCfg, TransformerNetworkCfg
-        from compositional_rl.mdp.loss import cosine_distance
+        from compositional_rsl_rl.algorithm.algorithm_cfg import CompositionalPPOAlgorithmCfg
+        from compositional_rsl_rl.loss.loss_cfg import LossesCfg, SupervisedLossCfg
+        from compositional_rsl_rl.network.network_cfg import MLPNetworkCfg, NetworkCfg
+        from compositional_rsl_rl.runner.runner_cfg import CompositionalRunnerCfg
+        from compositional_rsl_rl.mdp.network import AttentionMapNetworkCfg, PointNetNetworkCfg, TransformerNetworkCfg
+        from compositional_rsl_rl.mdp.loss import cosine_distance
 
         cfg = runpy.run_path(sys.argv[1])['make_config']()
         cfg.device = 'cpu'

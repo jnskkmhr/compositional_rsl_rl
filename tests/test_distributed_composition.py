@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from test_composition import Environment, config, rollout
 
-from compositional_rl import CompositionalPPO
+from compositional_rsl_rl import CompositionalPPO
 
 
 def _worker(rank: int, store: str, separate: bool) -> None:

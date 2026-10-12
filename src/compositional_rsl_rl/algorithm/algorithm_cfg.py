@@ -12,7 +12,7 @@ from dataclasses import dataclass
 class CompositionalPPOAlgorithmCfg:
     """Select compositional PPO through the upstream runner's algorithm resolver."""
 
-    class_name: str = "compositional_rl:CompositionalPPO"
+    class_name: str = "compositional_rsl_rl:CompositionalPPO"
     num_learning_epochs: int = 5
     num_mini_batches: int = 4
     clip_param: float = 0.2

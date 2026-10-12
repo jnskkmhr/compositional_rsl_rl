@@ -7,10 +7,10 @@
 
 from dataclasses import dataclass
 
-from compositional_rl.algorithm import CompositionalPPOAlgorithmCfg
-from compositional_rl.mdp.network import AttentionMapNetworkCfg
-from compositional_rl.network import ActorHeadCfg, CriticHeadCfg, NetworkCfg
-from compositional_rl.runner import CompositionalRunnerCfg
+from compositional_rsl_rl.algorithm import CompositionalPPOAlgorithmCfg
+from compositional_rsl_rl.mdp.network import AttentionMapNetworkCfg
+from compositional_rsl_rl.network import ActorHeadCfg, CriticHeadCfg, NetworkCfg
+from compositional_rsl_rl.runner import CompositionalRunnerCfg
 
 
 @dataclass(kw_only=True)

@@ -8,8 +8,8 @@ Start with the [complete IsaacLab config](#complete-isaaclab-agent-configuration
 [architecture swaps](#swapping-model-architectures-in-isaaclab) and
 [loss swaps](#swapping-loss-types-and-functions-in-isaaclab).
 
-The GitHub repository is `compositional_rsl_rl`; the Python package remains `compositional_rl`
-and the installable distribution is `compositional-rl`.
+The GitHub repository, Python package, and installable distribution are named
+`compositional_rsl_rl`.
 
 ## Installation and environment integration
 
@@ -28,9 +28,9 @@ serialize them with `dataclasses.asdict()`, or supply plain dictionaries using t
 An environment must implement the RSL-RL `VecEnv` protocol, usually through its existing adapter.
 mjlab and Newton adapters have not been integration-tested here.
 
-Import configs from `compositional_rl.network`, `compositional_rl.loss`, `compositional_rl.algorithm`,
-and `compositional_rl.runner`. Keep the runner's `class_name="OnPolicyRunner"`; the algorithm config
-selects `class_name="compositional_rl:CompositionalPPO"`. Ordinary RSL-RL configs and checkpoints
+Import configs from `compositional_rsl_rl.network`, `compositional_rsl_rl.loss`, `compositional_rsl_rl.algorithm`,
+and `compositional_rsl_rl.runner`. Keep the runner's `class_name="OnPolicyRunner"`; the algorithm config
+selects `class_name="compositional_rsl_rl:CompositionalPPO"`. Ordinary RSL-RL configs and checkpoints
 continue to use upstream PPO unchanged.
 
 For IsaacLab, select your task config through its existing `rsl_rl_cfg_entry_point` and retain the
@@ -84,10 +84,10 @@ output dimension to match an existing group. The actor does not consume these la
 
 """Full IsaacLab task config. The environment must return privileged_state with shape [num_envs, 3]."""
 
-from compositional_rl.algorithm import CompositionalPPOAlgorithmCfg
-from compositional_rl.loss import LossesCfg, SupervisedLossCfg
-from compositional_rl.network import ActorHeadCfg, CriticHeadCfg, MLPNetworkCfg, NetworkCfg
-from compositional_rl.runner import CompositionalRunnerCfg
+from compositional_rsl_rl.algorithm import CompositionalPPOAlgorithmCfg
+from compositional_rsl_rl.loss import LossesCfg, SupervisedLossCfg
+from compositional_rsl_rl.network import ActorHeadCfg, CriticHeadCfg, MLPNetworkCfg, NetworkCfg
+from compositional_rsl_rl.runner import CompositionalRunnerCfg
 from isaaclab.utils.configclass import configclass
 
 
@@ -184,9 +184,9 @@ the class above. For a task package named `my_project.tasks.g1`, the relevant en
 ```
 
 Replace that package path with your actual task package and retain the other registration entries.
-Install `compositional-rl` in the same Python environment as IsaacLab, then use the task's existing
+Install `compositional_rsl_rl` in the same Python environment as IsaacLab, then use the task's existing
 RSL-RL train/play scripts. The config retains `class_name="OnPolicyRunner"` and selects
-`algorithm.class_name="compositional_rl:CompositionalPPO"`; no script edits are needed for the
+`algorithm.class_name="compositional_rsl_rl:CompositionalPPO"`; no script edits are needed for the
 supported RSL-RL 5.5.1 interface.
 
 ## Swapping model architectures in IsaacLab
@@ -214,7 +214,7 @@ channels and validity in the fourth. This group must preserve its point and chan
 The term still outputs three values, so the actor references and supervision target stay compatible.
 
 ```python
-from compositional_rl.mdp.network import PointNetNetworkCfg
+from compositional_rsl_rl.mdp.network import PointNetNetworkCfg
 
 
 @configclass
@@ -239,7 +239,7 @@ This variant uses the same point-cloud observation and validity flag. Positional
 disabled because this example treats points as an unordered set.
 
 ```python
-from compositional_rl.mdp.network import TransformerNetworkCfg
+from compositional_rsl_rl.mdp.network import TransformerNetworkCfg
 
 
 @configclass
@@ -267,7 +267,7 @@ not maintain hidden state across environment steps.
 ### Replace the actor and critic with recurrent heads
 
 ```python
-from compositional_rl.network import RecurrentActorHeadCfg, RecurrentCriticHeadCfg
+from compositional_rsl_rl.network import RecurrentActorHeadCfg, RecurrentCriticHeadCfg
 
 
 @configclass
@@ -327,7 +327,7 @@ provided in the library's `mdp/loss` collection:
 @configclass
 class MyCosinePPORunnerCfg(MyCompositionalPPORunnerCfg):
     loss = MyCompositionalPPORunnerCfg().loss
-    loss.estimator_loss.loss_fn = "compositional_rl.mdp.loss:cosine_distance"
+    loss.estimator_loss.loss_fn = "compositional_rsl_rl.mdp.loss:cosine_distance"
     loss.estimator_loss.params = {"eps": 1.0e-8}
 ```
 
@@ -379,7 +379,7 @@ a separately owned estimator with zero loss weight will not learn from PPO.
 
 ```python
 from dataclasses import dataclass
-from compositional_rl.network import ActorHeadCfg, CriticHeadCfg, MLPNetworkCfg, NetworkCfg
+from compositional_rsl_rl.network import ActorHeadCfg, CriticHeadCfg, MLPNetworkCfg, NetworkCfg
 
 
 @dataclass(kw_only=True)
@@ -414,7 +414,7 @@ actor deployment exports.
 
 ```python
 from dataclasses import dataclass
-from compositional_rl.loss import LossesCfg, SupervisedLossCfg
+from compositional_rsl_rl.loss import LossesCfg, SupervisedLossCfg
 
 
 @dataclass(kw_only=True)
@@ -462,7 +462,7 @@ not supported; put trainable components in named network terms.
 ## Package structure
 
 ```text
-src/compositional_rl/
+src/compositional_rsl_rl/
 ├── __init__.py
 ├── network/
 │   ├── __init__.py
@@ -487,14 +487,14 @@ src/compositional_rl/
 ```
 
 Each domain exports its public classes from `__init__.py`; there is no simulator-specific module
-in the installed library. The algorithm's import path remains `compositional_rl:CompositionalPPO`.
+in the installed library. The algorithm's import path remains `compositional_rsl_rl:CompositionalPPO`.
 See [the simulator-independent example](examples/basic.py) for ordinary dataclass configuration.
 Given an RSL-RL-compatible `env`, use:
 
 ```python
 from dataclasses import asdict
 from rsl_rl.runners import OnPolicyRunner
-from compositional_rl.runner import CompositionalRunnerCfg
+from compositional_rsl_rl.runner import CompositionalRunnerCfg
 
 cfg = CompositionalRunnerCfg(networks=networks, loss=loss)
 runner = OnPolicyRunner(env, asdict(cfg), device=env.device)
@@ -507,9 +507,9 @@ same configs; the full example preserves its configuration utilities without cou
 
 ## Reusable custom terms
 
-Use `compositional_rl.mdp.network` for the bundled PointNet, Transformer, and AME terms, and
-`compositional_rl.mdp.loss` for reusable criteria. Managers and common config contracts stay in
-`compositional_rl.network` and `compositional_rl.loss`. Task-specific implementations can live in
+Use `compositional_rsl_rl.mdp.network` for the bundled PointNet, Transformer, and AME terms, and
+`compositional_rsl_rl.mdp.loss` for reusable criteria. Managers and common config contracts stay in
+`compositional_rsl_rl.network` and `compositional_rsl_rl.loss`. Task-specific implementations can live in
 `your_project.mdp` and be selected with `class_name="your_project.module:YourNetwork"` or a loss
 function import path; no manager registration is needed.
 
@@ -538,11 +538,11 @@ Save it as a task agent config and select `MyCompositionalPPORunnerCfg` through 
 
 """Complete IsaacLab AME agent config; policy, critic, and elevation_map are observation groups."""
 
-from compositional_rl.algorithm import CompositionalPPOAlgorithmCfg
-from compositional_rl.loss import LossesCfg
-from compositional_rl.mdp.network import AttentionMapNetworkCfg
-from compositional_rl.network import ActorHeadCfg, CriticHeadCfg, NetworkCfg
-from compositional_rl.runner import CompositionalRunnerCfg
+from compositional_rsl_rl.algorithm import CompositionalPPOAlgorithmCfg
+from compositional_rsl_rl.loss import LossesCfg
+from compositional_rsl_rl.mdp.network import AttentionMapNetworkCfg
+from compositional_rsl_rl.network import ActorHeadCfg, CriticHeadCfg, NetworkCfg
+from compositional_rsl_rl.runner import CompositionalRunnerCfg
 from isaaclab.utils.configclass import configclass
 
 
@@ -629,7 +629,7 @@ semantics, diagnostic attention weights, checkpoints, exports, and reproduction 
 Swap only the term config:
 
 ```python
-from compositional_rl.network import RecurrentActorHeadCfg, RecurrentCriticHeadCfg
+from compositional_rsl_rl.network import RecurrentActorHeadCfg, RecurrentCriticHeadCfg
 
 networks.actor = RecurrentActorHeadCfg(
     input=["policy", "state_estimator"],
@@ -671,10 +671,10 @@ labels; it still requires the `policy`, `command`, `critic`, and `privileged` ob
 
 """Full IsaacLab task config with a pretrained, frozen state estimator and no auxiliary labels."""
 
-from compositional_rl.algorithm import CompositionalPPOAlgorithmCfg
-from compositional_rl.loss import LossesCfg, SupervisedLossCfg
-from compositional_rl.network import ActorHeadCfg, CriticHeadCfg, MLPNetworkCfg, NetworkCfg
-from compositional_rl.runner import CompositionalRunnerCfg
+from compositional_rsl_rl.algorithm import CompositionalPPOAlgorithmCfg
+from compositional_rsl_rl.loss import LossesCfg, SupervisedLossCfg
+from compositional_rsl_rl.network import ActorHeadCfg, CriticHeadCfg, MLPNetworkCfg, NetworkCfg
+from compositional_rsl_rl.runner import CompositionalRunnerCfg
 from isaaclab.utils.configclass import configclass
 
 

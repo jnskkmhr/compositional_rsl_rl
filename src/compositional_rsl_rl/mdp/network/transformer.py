@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from typing import Any
 
-from compositional_rl.network import TensorNetwork
+from compositional_rsl_rl.network import TensorNetwork
 
 
 class _AttentionBlock(nn.Module):

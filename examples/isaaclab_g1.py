@@ -5,10 +5,10 @@
 
 """Full IsaacLab task config. The environment must return privileged_state with shape [num_envs, 3]."""
 
-from compositional_rl.algorithm import CompositionalPPOAlgorithmCfg
-from compositional_rl.loss import LossesCfg, SupervisedLossCfg
-from compositional_rl.network import ActorHeadCfg, CriticHeadCfg, MLPNetworkCfg, NetworkCfg
-from compositional_rl.runner import CompositionalRunnerCfg
+from compositional_rsl_rl.algorithm import CompositionalPPOAlgorithmCfg
+from compositional_rsl_rl.loss import LossesCfg, SupervisedLossCfg
+from compositional_rsl_rl.network import ActorHeadCfg, CriticHeadCfg, MLPNetworkCfg, NetworkCfg
+from compositional_rsl_rl.runner import CompositionalRunnerCfg
 from isaaclab.utils.configclass import configclass
 
 

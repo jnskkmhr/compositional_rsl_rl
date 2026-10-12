@@ -7,14 +7,14 @@
 
 from dataclasses import dataclass, field
 
-from compositional_rl.network import MLPNetworkCfg, TensorNetworkCfg
+from compositional_rsl_rl.network import MLPNetworkCfg, TensorNetworkCfg
 
 
 @dataclass(kw_only=True)
 class PointNetNetworkCfg(TensorNetworkCfg):
     """Point-cloud input [batch, points, 4], containing XYZ and a validity flag."""
 
-    class_name: str = "compositional_rl.mdp.network:PointNetNetwork"
+    class_name: str = "compositional_rsl_rl.mdp.network:PointNetNetwork"
     pointnet_hidden_dims: list[int] = field(default_factory=lambda: [64, 128])
 
 
@@ -22,7 +22,7 @@ class PointNetNetworkCfg(TensorNetworkCfg):
 class TransformerNetworkCfg(TensorNetworkCfg):
     """Fixed-length tokens [batch, tokens, channels], optionally ending in validity."""
 
-    class_name: str = "compositional_rl.mdp.network:TransformerNetwork"
+    class_name: str = "compositional_rsl_rl.mdp.network:TransformerNetwork"
     num_heads: int = 4
     num_layers: int = 2
     feedforward_dim: int = 256
@@ -38,7 +38,7 @@ class AttentionMapNetworkCfg(MLPNetworkCfg):
     when attach_global=True. Set hidden_dims to add an MLP readout of arbitrary width.
     """
 
-    class_name: str = "compositional_rl.mdp.network:AttentionMapNetwork"
+    class_name: str = "compositional_rsl_rl.mdp.network:AttentionMapNetwork"
     map_input: str = "elevation_map"
     map_shape: tuple[int, int, int] | None = None
     feature_dim: int = 64

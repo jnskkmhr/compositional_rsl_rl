@@ -15,11 +15,11 @@ from tensordict import TensorDict
 
 import onnxruntime
 import pytest
-from compositional_rl.mdp.network import PointNetEncoder, PointNetNetworkCfg, TransformerEncoder, TransformerNetworkCfg
-from compositional_rl.network import TensorNetworkCfg
+from compositional_rsl_rl.mdp.network import PointNetEncoder, PointNetNetworkCfg, TransformerEncoder, TransformerNetworkCfg
+from compositional_rsl_rl.network import TensorNetworkCfg
 from test_composition import Environment, config, rollout
 
-from compositional_rl import CompositionalPPO
+from compositional_rsl_rl import CompositionalPPO
 
 
 class _PointEnvironment(Environment):
@@ -81,7 +81,7 @@ def test_structured_term_training_and_export(kind: str, recurrent: str | None, s
     env = _PointEnvironment()
     cfg = config(recurrent, separate)
     cfg["networks"]["estimator"] = _network_cfg(kind)
-    cfg["loss"]["estimate"]["loss_fn"] = "compositional_rl.mdp.loss:cosine_distance"
+    cfg["loss"]["estimate"]["loss_fn"] = "compositional_rsl_rl.mdp.loss:cosine_distance"
     algo = CompositionalPPO.construct_algorithm(env.get_observations(), env, cfg, "cpu")
     before = [p.detach().clone() for p in algo.networks.terms["estimator"].parameters()]
     rollout(algo, env)
@@ -128,7 +128,7 @@ def test_external_network_needs_no_registration(tmp_path: Path, monkeypatch: pyt
     """Users can add a tensor encoder in their own package without modifying either manager."""
     (tmp_path / "user_terms.py").write_text(
         "from torch import nn\n"
-        "from compositional_rl.network import TensorNetwork\n"
+        "from compositional_rsl_rl.network import TensorNetwork\n"
         "class MyEncoder(TensorNetwork):\n"
         "    def build_encoder(self, input_shape, feature_dim, activation):\n"
         "        return nn.Sequential(nn.Flatten(start_dim=1), nn.Linear(input_shape[0], feature_dim))\n"

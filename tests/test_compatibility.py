@@ -14,10 +14,10 @@ from pathlib import Path
 from tensordict import TensorDict
 
 import pytest
-from compositional_rl.network import GraphModel
+from compositional_rsl_rl.network import GraphModel
 from test_composition import Environment, config, rollout
 
-from compositional_rl import CompositionalPPO, NetworkManager
+from compositional_rsl_rl import CompositionalPPO, NetworkManager
 from rsl_rl.algorithms import PPO
 
 
@@ -195,7 +195,7 @@ def test_actual_isaaclab_config_roundtrip() -> None:
     assert data["networks"]["state_estimator"]["hidden_dims"] == [32, 16]
     assert cls().networks.state_estimator.hidden_dims == [256, 128]
     assert data["class_name"] == "OnPolicyRunner"
-    assert data["algorithm"]["class_name"] == "compositional_rl:CompositionalPPO"
+    assert data["algorithm"]["class_name"] == "compositional_rsl_rl:CompositionalPPO"
     assert data["actor"] is None and data["critic"] is None
     obs = TensorDict(
         {

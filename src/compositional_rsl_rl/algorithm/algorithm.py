@@ -16,8 +16,8 @@ import torch
 from tensordict import TensorDict
 from torch import nn
 
-from compositional_rl.loss import LossManager
-from compositional_rl.network import GraphModel, NetworkManager
+from compositional_rsl_rl.loss import LossManager
+from compositional_rsl_rl.network import GraphModel, NetworkManager
 from rsl_rl.algorithms import PPO
 from rsl_rl.env import VecEnv
 from rsl_rl.extensions import resolve_rnd_config, resolve_symmetry_config
