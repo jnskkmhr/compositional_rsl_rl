@@ -820,6 +820,23 @@ Checkpoints retain the usual actor/critic/optimizer entries and additionally sto
 separate optimizer states. Changing architecture requires explicit transfer; the earlier prototype's
 `nodes.*` checkpoint format is not silently remapped.
 
+For compositional policies, environments exposing `common_step_counter` (directly or through
+`env.unwrapped`) also save an `environment_training_state` checkpoint entry containing that exact
+counter and `num_steps_per_env`. The counter counts vectorized control steps, without multiplying by
+the number of environments or GPUs. No simulator import or runner subclass is required.
+
+Loading with `load_cfg=None` or `load_cfg["iteration"]=True` restores this counter as well as the runner
+iteration. For older checkpoints without the entry, it estimates `(iter + 1) * num_steps_per_env` using
+the current rollout length and emits a warning. Iteration zero is saved after the first rollout in
+RSL-RL 5.5.1. This estimate assumes unchanged rollout length and no earlier curriculum restarts;
+checkpoints with the new entry restore the exact counter even if rollout length changes.
+
+For weights-only transfer, set `load_cfg["iteration"]=False` alongside the desired model load flags;
+this leaves the environment's counter unchanged. Environments without this counter and ordinary PPO
+configs are unaffected. Only the counter is restored: time-based curricula apply it at their next
+normal update. Terrain levels, episode state, random-number generators, and other curriculum state
+are not saved or advanced by this integration.
+
 The unchanged runner exports one complete actor graph and its required raw inputs. The exported `obs` tensor
 is the concatenation of flattened groups in `policy.obs_groups` order:
 

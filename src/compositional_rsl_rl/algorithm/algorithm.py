@@ -12,6 +12,8 @@ integration point synchronized when upgrading the dependency; task-specific algo
 from __future__ import annotations
 
 import copy
+import warnings
+
 import torch
 from tensordict import TensorDict
 from torch import nn
@@ -33,6 +35,7 @@ class CompositionalPPO(PPO):
         networks: NetworkManager,
         losses: dict,
         storage: RolloutStorage,
+        env: VecEnv | None = None,
         **kwargs: object,
     ) -> None:
         """Create unique parameter ownership and retain the standard PPO rollout interface."""
@@ -40,6 +43,7 @@ class CompositionalPPO(PPO):
         networks.to(device)
         # Initialize upstream facilities with distinct heads, avoiding shared-parameter duplication.
         super().__init__(networks.terms["actor"], networks.terms["critic"], storage, **kwargs)
+        self._env = getattr(env, "unwrapped", env)
         self.networks = networks
         self.losses = LossManager(networks, losses, set(storage.observations.keys()))
         self.actor = self._raw_actor = GraphModel(networks, "actor")
@@ -84,7 +88,13 @@ class CompositionalPPO(PPO):
         alg_cfg = resolve_symmetry_config(alg_cfg, env)
         storage = RolloutStorage("rl", env.num_envs, cfg["num_steps_per_env"], obs, [env.num_actions], device)
         algorithm = CompositionalPPO(
-            networks, cfg.get("loss") or {}, storage, device=device, multi_gpu_cfg=cfg.get("multi_gpu"), **alg_cfg
+            networks,
+            cfg.get("loss") or {},
+            storage,
+            env=env,
+            device=device,
+            multi_gpu_cfg=cfg.get("multi_gpu"),
+            **alg_cfg,
         )
         algorithm.compile(cfg.get("torch_compile_mode"))
         return algorithm
@@ -116,7 +126,7 @@ class CompositionalPPO(PPO):
         reduce_gradients_in_buckets(parameters, self.gpu_world_size, self.grad_reduce_bucket_mb)
 
     def save(self) -> dict:
-        """Keep standard checkpoint entries and add auxiliary-only networks and optimizer state."""
+        """Save networks, optimizers, and the environment control-step counter when available."""
         checkpoint = super().save()
         checkpoint.update(
             network_state_dict=self.networks.state_dict(),
@@ -128,10 +138,15 @@ class CompositionalPPO(PPO):
             frozen_networks=sorted(self.networks.frozen),
             loss_ownership={name: (sorted(term["trains"]), term["mode"]) for name, term in self.losses.terms.items()},
         )
+        if hasattr(self._env, "common_step_counter"):
+            checkpoint["environment_training_state"] = {
+                "common_step_counter": int(self._env.common_step_counter),
+                "num_steps_per_env": self.storage.num_transitions_per_env,
+            }
         return checkpoint
 
     def load(self, loaded_dict: dict, load_cfg: dict | None, strict: bool) -> bool:
-        """Restore all registered terms and reject incompatible optimizer ownership on resume."""
+        """Restore registered terms and, when loading iteration, environment curriculum progress."""
         restore_optimizer = load_cfg is None or load_cfg.get("optimizer", False)
         if restore_optimizer:
             expected = self.save()
@@ -144,6 +159,23 @@ class CompositionalPPO(PPO):
         if restore_optimizer:
             for name, optimizer in self.losses.optimizers.items():
                 optimizer.load_state_dict(loaded_dict["loss_optimizer_state_dict"][name])
+        if result and hasattr(self._env, "common_step_counter"):
+            state = loaded_dict.get("environment_training_state")
+            if state is not None:
+                self._env.common_step_counter = int(state["common_step_counter"])
+            else:
+                # The upstream runner saves iteration zero after its first rollout.
+                rollout_length = self.storage.num_transitions_per_env
+                counter = (loaded_dict["iter"] + 1) * rollout_length
+                warnings.warn(
+                    "Checkpoint has no environment_training_state; estimating common_step_counter "
+                    f"as (iteration + 1) * current rollout length = {counter}. This assumes an unchanged "
+                    "rollout length and no previous curriculum restarts. Load with iteration=False "
+                    "to keep the environment's current curriculum progress.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                self._env.common_step_counter = counter
         return result
 
     def update(self) -> dict[str, float]:
