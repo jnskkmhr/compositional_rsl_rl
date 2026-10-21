@@ -858,22 +858,25 @@ are not saved or advanced by this integration.
 
 ### Optional terrain curriculum state
 
-Enable `env_interface` to preserve TerrainImporter-style terrain difficulty as well as the
-training counter. The implementation lives entirely in `compositional_rsl_rl/env_interface.py`;
+Enable `env_interface` to save TerrainImporter-style terrain difficulty alongside the training
+counter. Terrain restoration is disabled by default, so playback and finetuning keep the destination
+terrain setup. The implementation lives entirely in `compositional_rsl_rl/env_interface.py`;
 Isaac Lab environment and manager classes need no changes.
 
 ```python
 from compositional_rsl_rl.env_interface import EnvInterfaceCfg
 
-# Alongside networks/algorithm in your CompositionalRunnerCfg subclass:
-env_interface = EnvInterfaceCfg()
-# For a plain dictionary runner config:
+# Save terrain state; keep the destination terrain when loading a checkpoint:
+env_interface = EnvInterfaceCfg()  # restore_terrain=False
+# Opt into exact terrain restoration when resuming the same training layout:
+env_interface = EnvInterfaceCfg(restore_terrain=True)
+# Equivalent explicit opt-in for a dictionary runner config:
 runner_cfg["env_interface"] = {"restore_terrain": True}
 ```
 
 Checkpoints store each rank's terrain levels, fixed terrain column assignments, terrain origin
-grid/seed, optional rigid/MPM membership, and control/physics counters. Loading validates the
-layout before loading policy weights. It restores tensors in place and calls the environment's
+grid/seed, optional rigid/MPM membership, and control/physics counters. With restoration explicitly
+enabled, loading validates the layout before loading policy weights. It restores tensors in place and calls the environment's
 normal reset to place robots and particles on the saved terrain, then refresh observations.
 During that reset only the terrain instance's `update_env_origins` is temporarily suppressed;
 other curricula run at the restored counter. The method is restored in `finally`, including on
@@ -891,20 +894,19 @@ distributed save.
 
 Exact terrain restoration requires the same world size, environments per rank, terrain layout,
 seed, column assignments, and rigid/MPM membership. Keep the remaining terrain configuration
-unchanged as well: origin-grid validation cannot detect every geometry/material change. For
-playback or intentional transfer to a different layout, set
-`env_interface.restore_terrain=False` (dictionary: `{"restore_terrain": False}`). The policy and
-training counter still load, while terrain restoration/reset are skipped. `load_cfg` with
-`iteration=False` skips environment restoration entirely.
+unchanged as well: origin-grid validation cannot detect every geometry/material change. Keep the
+default `restore_terrain=False` for playback or finetuning on a different layout. Policy, optimizer,
+and training-counter loading retain their existing behavior; only terrain restoration/reset are
+skipped. `load_cfg` with `iteration=False` skips environment restoration entirely.
 
 If `environment_training_state.terrain_curriculum` is absent, terrain loading is a no-op: it does
 not reset the environment, change terrain assignments/origins, or write the physics-step counter.
 The algorithm still restores/estimates the control-step counter independently. It cannot recover
 terrain levels that were never saved.
 
-The runner uses the same `load()` call for training and playback, so a checkpoint that contains
-terrain state still needs the explicit playback override. In Isaac Lab, append
-`agent.env_interface.restore_terrain=false` to `isaaclab play`; no `isaaclab_rl` changes are required.
+The runner uses the same `load()` call for training and playback. In Isaac Lab, append
+`agent.env_interface.restore_terrain=true` only when resuming the same training layout. Playback
+and terrain transfer need no override with the default config; no `isaaclab_rl` changes are required.
 
 The unchanged runner exports one complete actor graph and its required raw inputs. The exported `obs` tensor
 is the concatenation of flattened groups in `policy.obs_groups` order:

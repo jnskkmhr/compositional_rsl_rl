@@ -7,6 +7,7 @@
 
 import copy
 import datetime
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,7 +16,7 @@ import torch
 from test_composition import Environment, config, rollout
 
 from compositional_rsl_rl import CompositionalPPO
-from compositional_rsl_rl.env_interface import EnvInterface
+from compositional_rsl_rl.env_interface import EnvInterface, EnvInterfaceCfg
 from rsl_rl.runners import OnPolicyRunner
 
 
@@ -61,7 +62,7 @@ class TerrainEnvironment(Environment):
 
 def terrain_config():
     cfg = config()
-    cfg["env_interface"] = {}
+    cfg["env_interface"] = {"restore_terrain": True}
     return cfg
 
 
@@ -93,6 +94,36 @@ def test_runner_restores_terrain_and_fresh_episodes(tmp_path: Path):
     assert env.common_step_counter == 108
 
 
+@pytest.mark.parametrize("interface_cfg", [{}, asdict(EnvInterfaceCfg())], ids=["dictionary", "dataclass"])
+def test_default_load_keeps_destination_terrain(tmp_path: Path, interface_cfg):
+    source_env = TerrainEnvironment()
+    source = OnPolicyRunner(source_env, terrain_config(), log_dir=None, device="cpu")
+    checkpoint = source.alg.save()
+    checkpoint.update(iter=10, infos=None)
+    # A different training world size must not constrain default playback or finetuning.
+    checkpoint["environment_training_state"]["terrain_curriculum"]["ranks"] *= 2
+    path = str(tmp_path / "model.pt")
+    torch.save(checkpoint, path)
+    env = TerrainEnvironment()
+    env.scene.terrain.terrain_levels.zero_()
+    env.scene.terrain.terrain_origins.add_(10)
+    env.scene.terrain.env_origins.fill_(20)
+    env.common_step_counter = 0
+    env._sim_step_counter = 17
+    cfg = terrain_config()
+    cfg["env_interface"] = interface_cfg
+    target = OnPolicyRunner(env, cfg, log_dir=None, device="cpu")
+    target.load(path)
+    torch.testing.assert_close(target.alg.networks.state_dict(), source.alg.networks.state_dict())
+    assert env.reset_count == 0 and env._sim_step_counter == 17
+    assert env.common_step_counter == 100  # Counter restoration is independent of terrain restoration.
+    assert torch.all(env.scene.terrain.terrain_levels == 0)
+    assert torch.all(env.scene.terrain.env_origins == 20)
+    saved = target.alg.save()["environment_training_state"]["terrain_curriculum"]
+    assert len(saved["ranks"]) == 1
+    torch.testing.assert_close(saved["ranks"][0]["terrain_levels"], torch.zeros(4, dtype=torch.long))
+
+
 def test_transfer_and_missing_terrain_state():
     env = TerrainEnvironment()
     algo = CompositionalPPO.construct_algorithm(env.get_observations(), env, terrain_config(), "cpu")
@@ -120,7 +151,7 @@ def test_transfer_and_missing_terrain_state():
 @pytest.mark.parametrize("field", ["terrain_levels", "terrain_origins", "terrain_types", "mpm_env_mask"])
 def test_incompatible_layout_rejected_before_reset(field):
     env = TerrainEnvironment()
-    interface = EnvInterface(env)
+    interface = EnvInterface(env, restore_terrain=True)
     state = interface.state_dict()
     tensor = state["ranks"][0][field]
     if field == "terrain_levels":
@@ -139,7 +170,7 @@ def test_incompatible_layout_rejected_before_reset(field):
 
 def test_reset_failure_restores_terrain_method():
     env = TerrainEnvironment()
-    interface = EnvInterface(env)
+    interface = EnvInterface(env, restore_terrain=True)
     state = interface.state_dict()
     env.fail_reset = True
     with pytest.raises(RuntimeError, match="reset failure"):

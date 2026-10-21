@@ -20,15 +20,15 @@ import torch
 
 @dataclass(kw_only=True)
 class EnvInterfaceCfg:
-    """Opt into terrain snapshots; disable restoration for playback or a different environment layout."""
+    """Enable terrain snapshots; opt into restoration only when resuming the same environment layout."""
 
-    restore_terrain: bool = True
+    restore_terrain: bool = False
 
 
 class EnvInterface:
     """Capture rank-local terrain curricula and restore them before the next rollout."""
 
-    def __init__(self, env: object, *, restore_terrain: bool = True) -> None:
+    def __init__(self, env: object, *, restore_terrain: bool = False) -> None:
         """Validate the opt-in terrain interface without importing the simulator."""
         self.env = getattr(env, "unwrapped", env)
         self.restore_terrain = restore_terrain
