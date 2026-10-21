@@ -820,6 +820,24 @@ Checkpoints retain the usual actor/critic/optimizer entries and additionally sto
 separate optimizer states. Changing architecture requires explicit transfer; the earlier prototype's
 `nodes.*` checkpoint format is not silently remapped.
 
+Ordinary RSL-RL 5.5.1 checkpoints with `actor_state_dict`, `critic_state_dict`, and
+`optimizer_state_dict` also load directly into a compositional configuration containing only two
+independent, unfrozen `MLPModel` heads named `actor` and `critic`, with no auxiliary losses.
+Use the same architecture, activation, normalization, action order, and observation input order as
+training; checkpoint tensors cannot identify a same-sized observation permutation. No conversion
+command is needed:
+
+```python
+runner.load("model_10000.pt")  # Actor, critic, optimizer, iteration, and curriculum counter.
+# Or transfer only the policy, leaving the optimizer and curriculum progress unchanged:
+runner.load("model_10000.pt", load_cfg={"actor": True, "iteration": False})
+```
+
+The loader checks head keys/shapes and maps the legacy optimizer's actor-then-critic parameter
+order into the graph's order. Full resume requires the same optimizer type with one parameter group.
+Shared networks, extra terms, recurrent heads, and the old combined `model_state_dict` format are not
+converted. Newly saved checkpoints use the native compositional format.
+
 For compositional policies, environments exposing `common_step_counter` (directly or through
 `env.unwrapped`) also save an `environment_training_state` checkpoint entry containing that exact
 counter and `num_steps_per_env`. The counter counts vectorized control steps, without multiplying by

@@ -22,6 +22,7 @@ from compositional_rsl_rl.loss import LossManager
 from compositional_rsl_rl.network import GraphModel, NetworkManager
 from rsl_rl.algorithms import PPO
 from rsl_rl.env import VecEnv
+from rsl_rl.models import MLPModel
 from rsl_rl.extensions import resolve_rnd_config, resolve_symmetry_config
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import reduce_gradients_in_buckets, resolve_class, resolve_obs_groups, resolve_optimizer
@@ -147,18 +148,23 @@ class CompositionalPPO(PPO):
 
     def load(self, loaded_dict: dict, load_cfg: dict | None, strict: bool) -> bool:
         """Restore registered terms and, when loading iteration, environment curriculum progress."""
-        restore_optimizer = load_cfg is None or load_cfg.get("optimizer", False)
-        if restore_optimizer:
-            expected = self.save()
-            for key in ("optimizer_parameter_names", "network_inputs", "frozen_networks", "loss_ownership"):
-                if loaded_dict.get(key) != expected[key]:
-                    raise ValueError(f"Checkpoint {key} differs; load weights without optimizer state for transfer.")
-        if load_cfg is None or load_cfg.get("networks", False):
-            self.networks.load_state_dict(loaded_dict["network_state_dict"], strict=strict)
-        result = super().load(loaded_dict, load_cfg, strict)
-        if restore_optimizer:
-            for name, optimizer in self.losses.optimizers.items():
-                optimizer.load_state_dict(loaded_dict["loss_optimizer_state_dict"][name])
+        if "network_state_dict" not in loaded_dict:
+            result = self._load_legacy(loaded_dict, load_cfg, strict)
+        else:
+            restore_optimizer = load_cfg is None or load_cfg.get("optimizer", False)
+            if restore_optimizer:
+                expected = self.save()
+                for key in ("optimizer_parameter_names", "network_inputs", "frozen_networks", "loss_ownership"):
+                    if loaded_dict.get(key) != expected[key]:
+                        raise ValueError(
+                            f"Checkpoint {key} differs; load weights without optimizer state for transfer."
+                        )
+            if load_cfg is None or load_cfg.get("networks", False):
+                self.networks.load_state_dict(loaded_dict["network_state_dict"], strict=strict)
+            result = super().load(loaded_dict, load_cfg, strict)
+            if restore_optimizer:
+                for name, optimizer in self.losses.optimizers.items():
+                    optimizer.load_state_dict(loaded_dict["loss_optimizer_state_dict"][name])
         if result and hasattr(self._env, "common_step_counter"):
             state = loaded_dict.get("environment_training_state")
             if state is not None:
@@ -177,6 +183,71 @@ class CompositionalPPO(PPO):
                 )
                 self._env.common_step_counter = counter
         return result
+
+    def _load_legacy(self, checkpoint: dict, load_cfg: dict | None, strict: bool) -> bool:
+        """Load RSL-RL 5.5.1's independent MLP heads and actor-then-critic optimizer layout."""
+        if (
+            set(self.networks.terms) != {"actor", "critic"}
+            or any(type(head) is not MLPModel for head in self.networks.terms.values())
+            or any(self.networks.dependencies(name) != [name] for name in ("actor", "critic"))
+            or self.networks.frozen
+            or self.losses.terms
+        ):
+            raise ValueError(
+                "Legacy PPO checkpoints require two independent, unfrozen MLP heads and no auxiliary losses."
+            )
+        flags = (
+            dict(load_cfg)
+            if load_cfg is not None
+            else {
+                "actor": True,
+                "critic": True,
+                "optimizer": True,
+                "iteration": True,
+                "rnd": True,
+            }
+        )
+        restore_optimizer = flags.get("optimizer", False)
+        source_names = []
+        # Validate before changing weights; a full optimizer resume must match both heads exactly.
+        for name in ("actor", "critic"):
+            head = self.networks.terms[name]
+            if flags.get(name) or flags.get("networks") or restore_optimizer:
+                state = checkpoint[f"{name}_state_dict"]
+                expected = head.state_dict()
+                if (strict or restore_optimizer) and set(state) != set(expected):
+                    raise ValueError(f"Legacy {name} state keys do not match the configured MLP.")
+                if any(state[key].shape != expected[key].shape for key in state.keys() & expected.keys()):
+                    raise ValueError(f"Legacy {name} parameter or buffer shapes do not match the configured MLP.")
+                if restore_optimizer:
+                    names = list(dict(head.named_parameters()))
+                    if [key for key in state if key in names] != names:
+                        raise ValueError(f"Legacy {name} parameter order differs from the configured MLP.")
+                    source_names.extend(f"{name}.{key}" for key in names)
+        loaded = dict(checkpoint)
+        if restore_optimizer:
+            optimizer = copy.deepcopy(checkpoint["optimizer_state_dict"])
+            groups = optimizer["param_groups"]
+            expected_group = self.optimizer.state_dict()["param_groups"][0]
+            if len(groups) != 1 or not expected_group.keys() <= groups[0].keys():
+                raise ValueError("Legacy optimizer must use the same optimizer type and a single parameter group.")
+            ids = groups[0]["params"]
+            if len(ids) != len(source_names) or len(set(ids)) != len(ids):
+                raise ValueError("Legacy optimizer parameter count does not match the actor and critic.")
+            ids_by_name = dict(zip(source_names, ids))
+            parameters = dict(self.networks.terms.named_parameters())
+            for name, parameter_id in ids_by_name.items():
+                for key, value in optimizer["state"].get(parameter_id, {}).items():
+                    if key != "step" and isinstance(value, torch.Tensor) and value.shape != parameters[name].shape:
+                        raise ValueError(f"Legacy optimizer state shape differs for {name} ({key}).")
+            groups[0]["params"] = [ids_by_name[name] for name in self.optimizer_parameter_names]
+            loaded["optimizer_state_dict"] = optimizer
+        for name in ("actor", "critic"):
+            if flags.get(name) or flags.get("networks"):
+                self.networks.terms[name].load_state_dict(checkpoint[f"{name}_state_dict"], strict=strict)
+            flags[name] = False
+        # The upstream loader restores optimizer/LR, RND, and iteration flags after loading the raw heads.
+        return super().load(loaded, flags, strict)
 
     def update(self) -> dict[str, float]:
         """Run optimization epochs over stored batches and return mean losses."""
