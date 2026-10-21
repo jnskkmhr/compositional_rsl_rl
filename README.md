@@ -885,8 +885,9 @@ Distributed snapshots are collected by every rank after each PPO update. Rank-ze
 performs no collective, so it cannot wait on workers that are not saving. This adds one object
 collective per PPO update when enabled. Distributed manual saves must use a collected snapshot;
 call `alg.env_interface.capture()` on **every rank** if you modify terrain state outside the
-training loop. After loading an old checkpoint without terrain state or disabling restoration,
-run an update or call `capture()` on every rank before a manual distributed save.
+training loop. After loading an old checkpoint without terrain state, capture again to refresh the saved counters.
+After disabling restoration, run an update or call `capture()` on every rank before a manual
+distributed save.
 
 Exact terrain restoration requires the same world size, environments per rank, terrain layout,
 seed, column assignments, and rigid/MPM membership. Keep the remaining terrain configuration
@@ -896,9 +897,14 @@ playback or intentional transfer to a different layout, set
 training counter still load, while terrain restoration/reset are skipped. `load_cfg` with
 `iteration=False` skips environment restoration entirely.
 
-Older checkpoints without terrain state warn and retain the newly initialized terrain assignments;
-they still restore/estimate the counter and reset using the corresponding time-based curricula.
-They cannot recover terrain levels that were never saved.
+If `environment_training_state.terrain_curriculum` is absent, terrain loading is a no-op: it does
+not reset the environment, change terrain assignments/origins, or write the physics-step counter.
+The algorithm still restores/estimates the control-step counter independently. It cannot recover
+terrain levels that were never saved.
+
+The runner uses the same `load()` call for training and playback, so a checkpoint that contains
+terrain state still needs the explicit playback override. In Isaac Lab, append
+`agent.env_interface.restore_terrain=false` to `isaaclab play`; no `isaaclab_rl` changes are required.
 
 The unchanged runner exports one complete actor graph and its required raw inputs. The exported `obs` tensor
 is the concatenation of flattened groups in `policy.obs_groups` order:

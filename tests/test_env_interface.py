@@ -102,10 +102,19 @@ def test_transfer_and_missing_terrain_state():
     algo.load(checkpoint, {"actor": True, "iteration": False}, True)
     assert env.common_step_counter == 0 and env.reset_count == 0
     del checkpoint["environment_training_state"]["terrain_curriculum"]
-    with pytest.warns(RuntimeWarning, match="no terrain curriculum state"):
-        algo.load(checkpoint, None, True)
-    assert env.common_step_counter == env.schedule_counter == 100
+    origins = env.scene.terrain.env_origins.clone()
+    env._sim_step_counter = 17
+    algo.load(checkpoint, None, True)
+    assert env.common_step_counter == 100
+    assert env.reset_count == 0 and env._sim_step_counter == 17
     torch.testing.assert_close(env.scene.terrain.terrain_levels, torch.tensor([1, 2, 1, 2]))
+    torch.testing.assert_close(env.scene.terrain.env_origins, origins)
+    del checkpoint["environment_training_state"]
+    with pytest.warns(RuntimeWarning, match="estimating common_step_counter"):
+        algo.load(checkpoint, None, True)
+    assert env.common_step_counter == 44
+    assert env.reset_count == 0 and env._sim_step_counter == 17
+    torch.testing.assert_close(env.scene.terrain.env_origins, origins)
 
 
 @pytest.mark.parametrize("field", ["terrain_levels", "terrain_origins", "terrain_types", "mpm_env_mask"])

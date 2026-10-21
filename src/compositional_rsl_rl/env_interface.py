@@ -13,7 +13,6 @@ It saves training progress, not robot, particle, solver, or random-number-genera
 from __future__ import annotations
 
 import copy
-import warnings
 from dataclasses import dataclass
 
 import torch
@@ -116,26 +115,21 @@ class EnvInterface:
 
     def load_state_dict(self, state: dict | None) -> None:
         """Restore curricula in place and reset fresh episodes without advancing terrain difficulty."""
+        if state is None:
+            return
         if not self.restore_terrain:
             self._snapshot = None
             return
         saved = self.validate(state)
         self._snapshot = None
-        if saved is None:
-            warnings.warn(
-                "Checkpoint has no terrain curriculum state; retaining the newly initialized terrain assignments.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-        else:
-            for name in ("terrain_levels", "terrain_types"):
-                target = getattr(self.terrain, name)
-                target.copy_(saved[name].to(target.device))
-            self.env.common_step_counter = int(saved["common_step_counter"])
+        for name in ("terrain_levels", "terrain_types"):
+            target = getattr(self.terrain, name)
+            target.copy_(saved[name].to(target.device))
+        self.env.common_step_counter = int(saved["common_step_counter"])
         if hasattr(self.env, "_sim_step_counter"):
             self.env._sim_step_counter = (
                 saved["sim_step_counter"]
-                if saved is not None and "sim_step_counter" in saved
+                if "sim_step_counter" in saved
                 else self.env.common_step_counter * self.env.cfg.decimation
             )
         self.terrain.env_origins.copy_(
@@ -154,5 +148,4 @@ class EnvInterface:
                 self.terrain.update_env_origins = original
             else:
                 del self.terrain.update_env_origins
-        if saved is not None:
-            self._snapshot = copy.deepcopy(state)
+        self._snapshot = copy.deepcopy(state)
