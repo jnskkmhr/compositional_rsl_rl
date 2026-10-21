@@ -18,6 +18,7 @@ import torch
 from tensordict import TensorDict
 from torch import nn
 
+from compositional_rsl_rl.env_interface import EnvInterface
 from compositional_rsl_rl.loss import LossManager
 from compositional_rsl_rl.network import GraphModel, NetworkManager
 from rsl_rl.algorithms import PPO
@@ -37,6 +38,7 @@ class CompositionalPPO(PPO):
         losses: dict,
         storage: RolloutStorage,
         env: VecEnv | None = None,
+        env_interface: dict | None = None,
         **kwargs: object,
     ) -> None:
         """Create unique parameter ownership and retain the standard PPO rollout interface."""
@@ -45,6 +47,9 @@ class CompositionalPPO(PPO):
         # Initialize upstream facilities with distinct heads, avoiding shared-parameter duplication.
         super().__init__(networks.terms["actor"], networks.terms["critic"], storage, **kwargs)
         self._env = getattr(env, "unwrapped", env)
+        self.env_interface = EnvInterface(env, **env_interface) if env_interface is not None else None
+        if self.env_interface is not None:
+            self.env_interface.capture()
         self.networks = networks
         self.losses = LossManager(networks, losses, set(storage.observations.keys()))
         self.actor = self._raw_actor = GraphModel(networks, "actor")
@@ -93,6 +98,7 @@ class CompositionalPPO(PPO):
             cfg.get("loss") or {},
             storage,
             env=env,
+            env_interface=cfg.get("env_interface"),
             device=device,
             multi_gpu_cfg=cfg.get("multi_gpu"),
             **alg_cfg,
@@ -144,10 +150,16 @@ class CompositionalPPO(PPO):
                 "common_step_counter": int(self._env.common_step_counter),
                 "num_steps_per_env": self.storage.num_transitions_per_env,
             }
+        if self.env_interface is not None:
+            checkpoint["environment_training_state"]["terrain_curriculum"] = self.env_interface.state_dict()
         return checkpoint
 
     def load(self, loaded_dict: dict, load_cfg: dict | None, strict: bool) -> bool:
         """Restore registered terms and, when loading iteration, environment curriculum progress."""
+        restore_progress = load_cfg is None or load_cfg.get("iteration", False)
+        terrain_state = loaded_dict.get("environment_training_state", {}).get("terrain_curriculum")
+        if restore_progress and self.env_interface is not None:
+            self.env_interface.validate(terrain_state)
         if "network_state_dict" not in loaded_dict:
             result = self._load_legacy(loaded_dict, load_cfg, strict)
         else:
@@ -182,6 +194,8 @@ class CompositionalPPO(PPO):
                     stacklevel=2,
                 )
                 self._env.common_step_counter = counter
+        if result and self.env_interface is not None:
+            self.env_interface.load_state_dict(terrain_state)
         return result
 
     def _load_legacy(self, checkpoint: dict, load_cfg: dict | None, strict: bool) -> bool:
@@ -433,4 +447,6 @@ class CompositionalPPO(PPO):
         # Clear the storage
         self.storage.clear()
 
+        if self.env_interface is not None:
+            self.env_interface.capture()
         return loss_dict

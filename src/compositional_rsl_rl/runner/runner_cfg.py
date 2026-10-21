@@ -8,6 +8,7 @@
 from dataclasses import dataclass, field
 
 from compositional_rsl_rl.algorithm.algorithm_cfg import CompositionalPPOAlgorithmCfg
+from compositional_rsl_rl.env_interface import EnvInterfaceCfg
 from compositional_rsl_rl.loss.loss_cfg import LossesCfg
 from compositional_rsl_rl.network.network_cfg import NetworkCfg
 
@@ -21,6 +22,7 @@ class CompositionalRunnerCfg:
     """
 
     networks: NetworkCfg
+    env_interface: EnvInterfaceCfg | None = None
     loss: LossesCfg = field(default_factory=LossesCfg)
     algorithm: CompositionalPPOAlgorithmCfg = field(default_factory=CompositionalPPOAlgorithmCfg)
     class_name: str = "OnPolicyRunner"

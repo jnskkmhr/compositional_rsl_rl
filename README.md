@@ -26,7 +26,8 @@ The package depends on `rsl-rl-lib==5.5.1` and uses the upstream `OnPolicyRunner
 The runtime and all configs import no simulator. Configs are standard Python dataclasses;
 serialize them with `dataclasses.asdict()`, or supply plain dictionaries using the same schema.
 An environment must implement the RSL-RL `VecEnv` protocol, usually through its existing adapter.
-mjlab and Newton adapters have not been integration-tested here.
+The optional terrain checkpoint interface has been exercised with Isaac Lab's Newton moving-patch MPM task.
+mjlab has not been integration-tested here.
 
 Import configs from `compositional_rsl_rl.network`, `compositional_rsl_rl.loss`, `compositional_rsl_rl.algorithm`,
 and `compositional_rsl_rl.runner`. Keep the runner's `class_name="OnPolicyRunner"`; the algorithm config
@@ -855,6 +856,50 @@ configs are unaffected. Only the counter is restored: time-based curricula apply
 normal update. Terrain levels, episode state, random-number generators, and other curriculum state
 are not saved or advanced by this integration.
 
+### Optional terrain curriculum state
+
+Enable `env_interface` to preserve TerrainImporter-style terrain difficulty as well as the
+training counter. The implementation lives entirely in `compositional_rsl_rl/env_interface.py`;
+Isaac Lab environment and manager classes need no changes.
+
+```python
+from compositional_rsl_rl.env_interface import EnvInterfaceCfg
+
+# Alongside networks/algorithm in your CompositionalRunnerCfg subclass:
+env_interface = EnvInterfaceCfg()
+# For a plain dictionary runner config:
+runner_cfg["env_interface"] = {"restore_terrain": True}
+```
+
+Checkpoints store each rank's terrain levels, fixed terrain column assignments, terrain origin
+grid/seed, optional rigid/MPM membership, and control/physics counters. Loading validates the
+layout before loading policy weights. It restores tensors in place and calls the environment's
+normal reset to place robots and particles on the saved terrain, then refresh observations.
+During that reset only the terrain instance's `update_env_origins` is temporarily suppressed;
+other curricula run at the restored counter. The method is restored in `finally`, including on
+reset failure. This supports curricula that advance terrain through `update_env_origins`; it does
+not cover custom curricula that write terrain levels directly. Robot/particle motion, solver
+history, RNG state, and arbitrary stateful curriculum terms are not checkpointed.
+
+Distributed snapshots are collected by every rank after each PPO update. Rank-zero-only `save()`
+performs no collective, so it cannot wait on workers that are not saving. This adds one object
+collective per PPO update when enabled. Distributed manual saves must use a collected snapshot;
+call `alg.env_interface.capture()` on **every rank** if you modify terrain state outside the
+training loop. After loading an old checkpoint without terrain state or disabling restoration,
+run an update or call `capture()` on every rank before a manual distributed save.
+
+Exact terrain restoration requires the same world size, environments per rank, terrain layout,
+seed, column assignments, and rigid/MPM membership. Keep the remaining terrain configuration
+unchanged as well: origin-grid validation cannot detect every geometry/material change. For
+playback or intentional transfer to a different layout, set
+`env_interface.restore_terrain=False` (dictionary: `{"restore_terrain": False}`). The policy and
+training counter still load, while terrain restoration/reset are skipped. `load_cfg` with
+`iteration=False` skips environment restoration entirely.
+
+Older checkpoints without terrain state warn and retain the newly initialized terrain assignments;
+they still restore/estimate the counter and reset using the corresponding time-based curricula.
+They cannot recover terrain levels that were never saved.
+
 The unchanged runner exports one complete actor graph and its required raw inputs. The exported `obs` tensor
 is the concatenation of flattened groups in `policy.obs_groups` order:
 
@@ -895,4 +940,6 @@ The suite checks real upstream runner training/resume/inference, exact loss grad
 optimizer ownership, shared normalization, GRU/LSTM and mixed recurrent heads, image terms, independent
 ONNX Runtime outputs/states, pretrained/frozen terms, RND/symmetry/autocast, CPU distributed synchronization,
 ordinary RSL-RL checkpoint compatibility, simulator-blocked dataclass training in a fresh process,
-and real IsaacLab config serialization when IsaacLab is installed.
+and real IsaacLab config serialization when IsaacLab is installed. Terrain checkpoint tests cover
+restored placement, reset cleanup, layout validation, weights-only transfer, and per-rank terrain
+state under a rank-zero-only save.
