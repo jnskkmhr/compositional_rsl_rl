@@ -29,8 +29,8 @@ update integrates the main IsaacLab checkout and adds registered rigid G1 agent 
 
 ## Compatibility and scope
 
-The development package versions remain `rsl-rl-lib==5.5.1+flashsac.1` and
-`compositional_rsl_rl==0.2.0.dev0`. The compositional package now pins its RSL-RL dependency
+The development package versions remain `rsl-rl-lib==5.5.1+flashsac.2` and
+`compositional_rsl_rl==0.2.0.dev1`. The compositional package now pins its RSL-RL dependency
 to an immutable Git commit using standard dependency metadata. The FlashSAC branches are
 published on GitHub; these are development builds, not upstream or PyPI releases. The newly introduced FlashSAC constructor/head paths
 from the earlier implementation are superseded; no implicit architecture or compatibility fallback
@@ -58,7 +58,7 @@ Single-device eager feed-forward learning is supported, including optional CUDA 
 Shared trainable actor/critic graph terms, recurrent replay, compile mode and intermediate empirical
 observation normalizers remain explicitly unsupported. Shared frozen graph terms are supported.
 Checkpoint restoration restarts replay and simulator trajectories; exact continuation and Agile
-checkpoint conversion are not implemented. G1/One-S curricula and relabeling remain in Agile. Terrain-state restoration is not implemented for this runner.
+checkpoint conversion are not implemented. The IsaacLab G1 Agile task now supplies its native curricula and replay relabeling through the runner extension; One-S remains outside this integration. Terrain-state restoration is not implemented for this runner.
 
 ## Validation results
 

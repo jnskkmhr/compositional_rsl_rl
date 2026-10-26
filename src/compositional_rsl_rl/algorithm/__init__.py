@@ -5,10 +5,13 @@
 
 """Compositional algorithms and simulator-independent configuration."""
 
-from .algorithm_cfg import CompositionalPPOAlgorithmCfg, SchedulerCfg
+from .algorithm_cfg import (
+    CompositionalFlashSACAlgorithmCfg,
+    CompositionalPPOAlgorithmCfg,
+    SchedulerCfg,
+)
 from .compositional_flash_sac import CompositionalFlashSAC
 from .compositional_ppo import CompositionalPPO
-from .flash_sac_cfg import CompositionalFlashSACAlgorithmCfg
 
 __all__ = [
     "CompositionalFlashSAC",

@@ -6,8 +6,8 @@ Install directly from GitHub:
 python -m pip install 'git+https://github.com/jnskkmhr/compositional_rsl_rl.git@jnskkmhr/flash-sac'
 ```
 
-This development version (`0.2.0.dev0`) declares its RSL-RL dependency as a standard direct Git
-requirement pinned to `ace7c23aa71a044bd30b0f2d39e8707a87243023` (`5.5.1+flashsac.1`). pip and uv install it automatically,
+This development version (`0.2.0.dev1`) declares its RSL-RL dependency as a standard direct Git
+requirement pinned to `e778b1573375350f76f834e35f321d02f1441785` (`5.5.1+flashsac.2`). pip and uv install it automatically,
 including when this package is installed as another project's dependency. No local sibling
 checkout or dependency-level uv override is required.
 
@@ -120,7 +120,8 @@ Agile's default. Its replay capacity is reduced for this task's larger ten-frame
 The G1 example now uses the generic curriculum below for Agile's 1-to-4 action-bound schedule.
 
 The native runner restores learner state with fresh replay, not an exact simulator continuation.
-Agile checkpoint conversion and its task-specific relabeling/curricula are not included.
+Agile checkpoint conversion is not included. The IsaacLab Agile task supplies replay reward
+relabeling and wall-clock curricula through the runner replay extension.
 The earlier residual-specific actor/critic classes and configs were removed. Their parameters
 now belong to named encoder and head terms in the graph. Earlier development
 checkpoints need explicit configuration and state-key migration; automatic migration is not provided.
@@ -166,3 +167,8 @@ Curriculum validation passed 230 core tests and 102 compositional tests. A nativ
 used a shortened ramp, reached action support four, and verified the applied step in its checkpoint.
 Playback, JIT/ONNX and LEAPP export from that checkpoint passed. Source lint and edited-file
 formatting passed; IsaacLab's global changelog check still reports unrelated existing fragment errors.
+
+`CompositionalOffPolicyRunnerCfg` exposes `replay_cfg`, `max_time_s`, and
+`save_interval_updates`. These configure the native runner's replay transform,
+wall-time stopping budget, and checkpoint cadence in learner updates. Their
+defaults preserve iteration-based training without a replay transform.
