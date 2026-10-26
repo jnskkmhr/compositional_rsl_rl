@@ -3,8 +3,8 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Configuration for the unmodified upstream RSL-RL runner."""
+"""Configuration for native RSL-RL on-policy and off-policy runners."""
 
-from .runner_cfg import CompositionalRunnerCfg
+from .runner_cfg import CompositionalOffPolicyRunnerCfg, CompositionalRunnerCfg
 
-__all__ = ["CompositionalRunnerCfg"]
+__all__ = ["CompositionalRunnerCfg", "CompositionalOffPolicyRunnerCfg"]

@@ -1,0 +1,470 @@
+# Copyright (c) 2021-2026, ETH Zurich and NVIDIA CORPORATION
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+"""RSL-RL 5.5.1 integration. Rollout/GAE/runner APIs remain upstream implementations.
+
+The update loop is adapted from that pinned version because upstream has no loss hook. Keep this single
+integration point synchronized when upgrading the dependency; task-specific algorithms are unnecessary.
+"""
+
+from __future__ import annotations
+
+import copy
+import warnings
+
+import torch
+from rsl_rl.algorithms import PPO
+from rsl_rl.env import VecEnv
+from rsl_rl.extensions import resolve_rnd_config, resolve_symmetry_config
+from rsl_rl.models import MLPModel
+from rsl_rl.storage import RolloutStorage
+from rsl_rl.utils import (
+    reduce_gradients_in_buckets,
+    resolve_class,
+    resolve_obs_groups,
+    resolve_optimizer,
+)
+from tensordict import TensorDict
+from torch import nn
+
+from compositional_rsl_rl.env_interface import EnvInterface
+from compositional_rsl_rl.loss import LossManager
+from compositional_rsl_rl.network import GraphModel, NetworkManager
+
+
+class CompositionalPPO(PPO):
+    """PPO over peer network terms, with explicit joint/separate supervised losses."""
+
+    def __init__(
+        self,
+        networks: NetworkManager,
+        losses: dict,
+        storage: RolloutStorage,
+        env: VecEnv | None = None,
+        env_interface: dict | None = None,
+        **kwargs: object,
+    ) -> None:
+        """Create unique parameter ownership and retain the standard PPO rollout interface."""
+        device = kwargs.get("device", "cpu")
+        networks.to(device)
+        # Initialize upstream facilities with distinct heads, avoiding shared-parameter duplication.
+        super().__init__(networks.terms["actor"], networks.terms["critic"], storage, **kwargs)
+        self._env = getattr(env, "unwrapped", env)
+        self.env_interface = EnvInterface(env, **env_interface) if env_interface is not None else None
+        if self.env_interface is not None:
+            self.env_interface.capture()
+        self.networks = networks
+        self.losses = LossManager(networks, losses, set(storage.observations.keys()))
+        self.actor = self._raw_actor = GraphModel(networks, "actor")
+        self.critic = self._raw_critic = GraphModel(networks, "critic")
+        active = set(networks.dependencies("actor")) | set(networks.dependencies("critic"))
+        for term in self.losses.terms.values():
+            if term["mode"] == "joint":
+                active.update(term["trains"])
+        active -= networks.separate | networks.frozen
+        self.ppo_parameters = [
+            p for name in networks.order if name in active for p in networks.terms[name].parameters() if p.requires_grad
+        ]
+        self.optimizer_parameter_names = [
+            f"{name}.{key}"
+            for name in networks.order
+            if name in active
+            for key, p in networks.terms[name].named_parameters()
+            if p.requires_grad
+        ]
+        if not self.ppo_parameters:
+            raise ValueError("PPO requires at least one trainable policy/value parameter.")
+        self.optimizer = resolve_optimizer(kwargs.get("optimizer", "adam"))(self.ppo_parameters, lr=self.learning_rate)
+
+    @staticmethod
+    def construct_algorithm(obs: TensorDict, env: VecEnv, cfg: dict, device: str) -> PPO:
+        """Construct through the unmodified upstream OnPolicyRunner."""
+        cfg = copy.deepcopy(cfg)
+        cfg.setdefault("multi_gpu", None)
+        if cfg.get("networks") is None:
+            cfg["algorithm"]["class_name"] = "PPO"
+            return PPO.construct_algorithm(obs, env, cfg, device)
+        _, alg_cfg = resolve_class(cfg["algorithm"])
+        if alg_cfg.pop("share_cnn_encoders", False):
+            raise ValueError("Share a named network term through input references instead of share_cnn_encoders.")
+        networks = NetworkManager(obs, cfg["networks"], env.num_actions)
+        obs_groups = dict(cfg.get("obs_groups") or {})
+        for head in ("actor", "critic"):
+            obs_groups[head] = networks.observation_groups(head)
+        defaults = ["actor", "critic"] + (["rnd_state"] if alg_cfg.get("rnd_cfg") else [])
+        obs_groups = resolve_obs_groups(obs, obs_groups, defaults)
+        alg_cfg = resolve_rnd_config(alg_cfg, obs, obs_groups, env)
+        alg_cfg = resolve_symmetry_config(alg_cfg, env)
+        storage = RolloutStorage("rl", env.num_envs, cfg["num_steps_per_env"], obs, [env.num_actions], device)
+        algorithm = CompositionalPPO(
+            networks,
+            cfg.get("loss") or {},
+            storage,
+            env=env,
+            env_interface=cfg.get("env_interface"),
+            device=device,
+            multi_gpu_cfg=cfg.get("multi_gpu"),
+            **alg_cfg,
+        )
+        algorithm.compile(cfg.get("torch_compile_mode"))
+        return algorithm
+
+    def train_mode(self) -> None:
+        """Train all terms, including loss-only heads; frozen terms remain in eval mode."""
+        self.networks.train()
+        if self.rnd:
+            self.rnd.train()
+
+    def eval_mode(self) -> None:
+        """Set every term to evaluation mode for inference."""
+        self.networks.eval()
+        if self.rnd:
+            self.rnd.eval()
+
+    def broadcast_parameters(self) -> None:
+        """Broadcast every network once, including separately optimized and auxiliary-only terms."""
+        models = [self.networks] + ([self.rnd] if self.rnd else [])
+        for model in models:
+            for value in model.state_dict().values():
+                torch.distributed.broadcast(value, src=0)
+
+    def reduce_parameters(self) -> None:
+        """Reduce shared gradients once before any optimizer steps."""
+        parameters = list(self.networks.parameters())
+        if self.rnd:
+            parameters.extend(self.rnd.parameters())
+        reduce_gradients_in_buckets(parameters, self.gpu_world_size, self.grad_reduce_bucket_mb)
+
+    def save(self) -> dict:
+        """Save networks, optimizers, and the environment control-step counter when available."""
+        checkpoint = super().save()
+        checkpoint.update(
+            network_state_dict=self.networks.state_dict(),
+            loss_optimizer_state_dict={
+                name: optimizer.state_dict() for name, optimizer in self.losses.optimizers.items()
+            },
+            optimizer_parameter_names=self.optimizer_parameter_names,
+            network_inputs=self.networks.inputs,
+            frozen_networks=sorted(self.networks.frozen),
+            loss_ownership={name: (sorted(term["trains"]), term["mode"]) for name, term in self.losses.terms.items()},
+        )
+        if hasattr(self._env, "common_step_counter"):
+            checkpoint["environment_training_state"] = {
+                "common_step_counter": int(self._env.common_step_counter),
+                "num_steps_per_env": self.storage.num_transitions_per_env,
+            }
+        if self.env_interface is not None:
+            checkpoint["environment_training_state"]["terrain_curriculum"] = self.env_interface.state_dict()
+        return checkpoint
+
+    def load(self, loaded_dict: dict, load_cfg: dict | None, strict: bool) -> bool:
+        """Restore registered terms and, when loading iteration, environment curriculum progress."""
+        restore_progress = load_cfg is None or load_cfg.get("iteration", False)
+        terrain_state = loaded_dict.get("environment_training_state", {}).get("terrain_curriculum")
+        if restore_progress and self.env_interface is not None:
+            self.env_interface.validate(terrain_state)
+        if "network_state_dict" not in loaded_dict:
+            result = self._load_legacy(loaded_dict, load_cfg, strict)
+        else:
+            restore_optimizer = load_cfg is None or load_cfg.get("optimizer", False)
+            if restore_optimizer:
+                expected = self.save()
+                for key in (
+                    "optimizer_parameter_names",
+                    "network_inputs",
+                    "frozen_networks",
+                    "loss_ownership",
+                ):
+                    if loaded_dict.get(key) != expected[key]:
+                        raise ValueError(
+                            f"Checkpoint {key} differs; load weights without optimizer state for transfer."
+                        )
+            if load_cfg is None or load_cfg.get("networks", False):
+                self.networks.load_state_dict(loaded_dict["network_state_dict"], strict=strict)
+            result = super().load(loaded_dict, load_cfg, strict)
+            if restore_optimizer:
+                for name, optimizer in self.losses.optimizers.items():
+                    optimizer.load_state_dict(loaded_dict["loss_optimizer_state_dict"][name])
+        if result and hasattr(self._env, "common_step_counter"):
+            state = loaded_dict.get("environment_training_state")
+            if state is not None:
+                self._env.common_step_counter = int(state["common_step_counter"])
+            else:
+                # The upstream runner saves iteration zero after its first rollout.
+                rollout_length = self.storage.num_transitions_per_env
+                counter = (loaded_dict["iter"] + 1) * rollout_length
+                warnings.warn(
+                    "Checkpoint has no environment_training_state; estimating common_step_counter "
+                    f"as (iteration + 1) * current rollout length = {counter}. This assumes an unchanged "
+                    "rollout length and no previous curriculum restarts. Load with iteration=False "
+                    "to keep the environment's current curriculum progress.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                self._env.common_step_counter = counter
+        if result and self.env_interface is not None:
+            self.env_interface.load_state_dict(terrain_state)
+        return result
+
+    def _load_legacy(self, checkpoint: dict, load_cfg: dict | None, strict: bool) -> bool:
+        """Load RSL-RL 5.5.1's independent MLP heads and actor-then-critic optimizer layout."""
+        if (
+            set(self.networks.terms) != {"actor", "critic"}
+            or any(type(head) is not MLPModel for head in self.networks.terms.values())
+            or any(self.networks.dependencies(name) != [name] for name in ("actor", "critic"))
+            or self.networks.frozen
+            or self.losses.terms
+        ):
+            raise ValueError(
+                "Legacy PPO checkpoints require two independent, unfrozen MLP heads and no auxiliary losses."
+            )
+        flags = (
+            dict(load_cfg)
+            if load_cfg is not None
+            else {
+                "actor": True,
+                "critic": True,
+                "optimizer": True,
+                "iteration": True,
+                "rnd": True,
+            }
+        )
+        restore_optimizer = flags.get("optimizer", False)
+        source_names = []
+        # Validate before changing weights; a full optimizer resume must match both heads exactly.
+        for name in ("actor", "critic"):
+            head = self.networks.terms[name]
+            if flags.get(name) or flags.get("networks") or restore_optimizer:
+                state = checkpoint[f"{name}_state_dict"]
+                expected = head.state_dict()
+                if (strict or restore_optimizer) and set(state) != set(expected):
+                    raise ValueError(f"Legacy {name} state keys do not match the configured MLP.")
+                if any(state[key].shape != expected[key].shape for key in state.keys() & expected.keys()):
+                    raise ValueError(f"Legacy {name} parameter or buffer shapes do not match the configured MLP.")
+                if restore_optimizer:
+                    names = list(dict(head.named_parameters()))
+                    if [key for key in state if key in names] != names:
+                        raise ValueError(f"Legacy {name} parameter order differs from the configured MLP.")
+                    source_names.extend(f"{name}.{key}" for key in names)
+        loaded = dict(checkpoint)
+        if restore_optimizer:
+            optimizer = copy.deepcopy(checkpoint["optimizer_state_dict"])
+            groups = optimizer["param_groups"]
+            expected_group = self.optimizer.state_dict()["param_groups"][0]
+            if len(groups) != 1 or not expected_group.keys() <= groups[0].keys():
+                raise ValueError("Legacy optimizer must use the same optimizer type and a single parameter group.")
+            ids = groups[0]["params"]
+            if len(ids) != len(source_names) or len(set(ids)) != len(ids):
+                raise ValueError("Legacy optimizer parameter count does not match the actor and critic.")
+            ids_by_name = dict(zip(source_names, ids))
+            parameters = dict(self.networks.terms.named_parameters())
+            for name, parameter_id in ids_by_name.items():
+                for key, value in optimizer["state"].get(parameter_id, {}).items():
+                    if key != "step" and isinstance(value, torch.Tensor) and value.shape != parameters[name].shape:
+                        raise ValueError(f"Legacy optimizer state shape differs for {name} ({key}).")
+            groups[0]["params"] = [ids_by_name[name] for name in self.optimizer_parameter_names]
+            loaded["optimizer_state_dict"] = optimizer
+        for name in ("actor", "critic"):
+            if flags.get(name) or flags.get("networks"):
+                self.networks.terms[name].load_state_dict(checkpoint[f"{name}_state_dict"], strict=strict)
+            flags[name] = False
+        # The upstream loader restores optimizer/LR, RND, and iteration flags after loading the raw heads.
+        return super().load(loaded, flags, strict)
+
+    def update(self) -> dict[str, float]:
+        """Run optimization epochs over stored batches and return mean losses."""
+        mean_loss_terms = {}
+        mean_value_loss = 0
+        mean_surrogate_loss = 0
+        mean_entropy = 0
+        # RND loss
+        mean_rnd_loss = 0 if self.rnd else None
+        # Symmetry loss
+        mean_symmetry_loss = 0 if self.symmetry else None
+
+        # Get mini-batch generator
+        if self.actor.is_recurrent or self.critic.is_recurrent:
+            generator = self.storage.recurrent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+        else:
+            generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+
+        # Iterate over mini-batches
+        for batch in generator:
+            original_batch_size = batch.observations.batch_size[0]
+
+            # Check if we should normalize advantages per mini-batch
+            if self.normalize_advantage_per_mini_batch:
+                with torch.no_grad():
+                    batch.advantages = (batch.advantages - batch.advantages.mean()) / (batch.advantages.std() + 1e-8)  # type: ignore
+
+            # Preserve supervision before symmetry mutates the minibatch. All backwards precede any step.
+            with torch.amp.autocast(
+                device_type=torch.device(self.device).type,
+                enabled=self.use_mixed_precision,
+                dtype=torch.bfloat16,
+            ):
+                joint_losses, separate_losses, loss_metrics = self.losses.compute(batch)
+
+            # Perform symmetric augmentation if enabled
+            if self.symmetry:
+                self.symmetry.augment_batch(batch, original_batch_size)
+
+            # Optionally use mixed precision for the forward pass and loss computation
+            with torch.amp.autocast(  # type: ignore
+                device_type=torch.device(self.device).type,
+                enabled=self.use_mixed_precision,
+                dtype=torch.bfloat16,
+            ):
+                # Recompute actions log prob and entropy for current batch of transitions
+                # Note: We need to do this because we updated the policy with new parameters
+                self.actor(
+                    batch.observations,
+                    masks=batch.masks,
+                    hidden_state=batch.hidden_states[0],
+                    stochastic_output=True,
+                )
+                actions_log_prob = self.actor.get_output_log_prob(batch.actions)  # type: ignore
+                values = self.critic(
+                    batch.observations,
+                    masks=batch.masks,
+                    hidden_state=batch.hidden_states[1],
+                )
+                # Note: We only keep the following tensors for the original samples in case of symmetry augmentation
+                distribution_params = tuple(p[:original_batch_size] for p in self.actor.output_distribution_params)
+                entropy = self.actor.output_entropy[:original_batch_size]
+
+                # Compute KL divergence and adapt the learning rate
+                if self.desired_kl is not None and self.schedule == "adaptive":
+                    with torch.inference_mode():
+                        kl = self.actor.get_kl_divergence(batch.old_distribution_params, distribution_params)  # type: ignore
+                        kl_mean = torch.mean(kl)
+
+                        # Reduce the KL divergence across all GPUs
+                        if self.is_multi_gpu:
+                            torch.distributed.all_reduce(kl_mean, op=torch.distributed.ReduceOp.SUM)
+                            kl_mean /= self.gpu_world_size
+
+                        # Update the learning rate only on the main process
+                        if self.gpu_global_rank == 0:
+                            if kl_mean > self.desired_kl * 2.0:
+                                self.learning_rate = max(1e-5, self.learning_rate / 1.5)
+                            elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
+                                self.learning_rate = min(1e-2, self.learning_rate * 1.5)
+
+                        # Update the learning rate for all GPUs
+                        if self.is_multi_gpu:
+                            lr_tensor = torch.tensor(self.learning_rate, device=self.device)
+                            torch.distributed.broadcast(lr_tensor, src=0)
+                            self.learning_rate = lr_tensor.item()
+
+                        # Update the learning rate for all parameter groups
+                        for param_group in self.optimizer.param_groups:
+                            param_group["lr"] = self.learning_rate
+
+                # Surrogate loss
+                ratio = torch.exp(actions_log_prob - torch.squeeze(batch.old_actions_log_prob))  # type: ignore
+                surrogate = -torch.squeeze(batch.advantages) * ratio  # type: ignore
+                surrogate_clipped = -torch.squeeze(batch.advantages) * torch.clamp(  # type: ignore
+                    ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
+                )
+                surrogate_loss = torch.max(surrogate, surrogate_clipped).mean()
+
+                # Value function loss
+                if self.use_clipped_value_loss:
+                    value_clipped = batch.values + (values - batch.values).clamp(-self.clip_param, self.clip_param)
+                    value_losses = (values - batch.returns).pow(2)
+                    value_losses_clipped = (value_clipped - batch.returns).pow(2)
+                    value_loss = torch.max(value_losses, value_losses_clipped).mean()
+                else:
+                    value_loss = (batch.returns - values).pow(2).mean()
+
+                loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy.mean()
+
+                for joint_loss in joint_losses:
+                    loss = loss + joint_loss
+
+                # RND loss
+                rnd_loss = self.rnd.compute_loss(batch.observations[:original_batch_size]) if self.rnd else None  # type: ignore
+
+                # Symmetry loss
+                if self.symmetry:
+                    symmetry_loss = self.symmetry.compute_loss(self.actor, batch, original_batch_size)
+                    if self.symmetry.use_mirror_loss:
+                        loss = loss + self.symmetry.mirror_loss_coeff * symmetry_loss
+
+            # Compute the gradients for PPO
+            self.networks.zero_grad(set_to_none=True)
+            loss.backward()
+            for separate_loss in separate_losses.values():
+                separate_loss.backward()
+            # Compute the gradients for RND
+            if self.rnd:
+                self.rnd.optimizer.zero_grad()
+                rnd_loss.backward()
+
+            # Collect gradients from all GPUs
+            if self.is_multi_gpu:
+                self.reduce_parameters()
+
+            # Apply the gradients for PPO
+            nn.utils.clip_grad_norm_(self.ppo_parameters, self.max_grad_norm)
+            for optimizer in self.losses.optimizers.values():
+                parameters = [p for group in optimizer.param_groups for p in group["params"]]
+                nn.utils.clip_grad_norm_(parameters, self.max_grad_norm)
+            self.optimizer.step()
+            for optimizer in self.losses.optimizers.values():
+                optimizer.step()
+            # Apply the gradients for RND
+            if self.rnd:
+                self.rnd.optimizer.step()
+
+            # Store the losses
+            for name, value in loss_metrics.items():
+                mean_loss_terms[name] = mean_loss_terms.get(name, 0.0) + value
+            mean_value_loss += value_loss.item()
+            mean_surrogate_loss += surrogate_loss.item()
+            mean_entropy += entropy.mean().item()
+            # RND loss
+            if mean_rnd_loss is not None:
+                mean_rnd_loss += rnd_loss.item()
+            # Symmetry loss
+            if mean_symmetry_loss is not None:
+                mean_symmetry_loss += symmetry_loss.item()
+
+        # Update the normalizers
+        obs = self.storage.observations.flatten(0, 1)
+        self.networks.update_normalization(obs)
+        if self.rnd:
+            self.rnd.update_normalization(obs)  # type: ignore
+
+        # Divide the losses by the number of updates
+        num_updates = self.num_learning_epochs * self.num_mini_batches
+        mean_value_loss /= num_updates
+        mean_surrogate_loss /= num_updates
+        mean_entropy /= num_updates
+        if mean_rnd_loss is not None:
+            mean_rnd_loss /= num_updates
+        if mean_symmetry_loss is not None:
+            mean_symmetry_loss /= num_updates
+
+        # Construct the loss dictionary
+        loss_dict = {
+            "value": mean_value_loss,
+            "surrogate": mean_surrogate_loss,
+            "entropy": mean_entropy,
+        }
+        if self.rnd:
+            loss_dict["rnd"] = mean_rnd_loss
+        if self.symmetry:
+            loss_dict["symmetry"] = mean_symmetry_loss
+
+        loss_dict.update({f"loss/{name}": value / num_updates for name, value in mean_loss_terms.items()})
+
+        # Clear the storage
+        self.storage.clear()
+
+        if self.env_interface is not None:
+            self.env_interface.capture()
+        return loss_dict

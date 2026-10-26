@@ -3,12 +3,19 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Reusable network implementations and their configurations."""
+"""Compatibility import; use compositional_rsl_rl.components in new configurations."""
 
-from .attention_map import AttentionMapEncoder, AttentionMapNetwork
-from .network_cfg import AttentionMapNetworkCfg, PointNetNetworkCfg, TransformerNetworkCfg
-from .pointnet import PointNetEncoder, PointNetNetwork
-from .transformer import TransformerEncoder, TransformerNetwork
+from compositional_rsl_rl.components.network import (
+    AttentionMapEncoder,
+    AttentionMapNetwork,
+    AttentionMapNetworkCfg,
+    PointNetEncoder,
+    PointNetNetwork,
+    PointNetNetworkCfg,
+    TransformerEncoder,
+    TransformerNetwork,
+    TransformerNetworkCfg,
+)
 
 __all__ = [
     "AttentionMapEncoder",

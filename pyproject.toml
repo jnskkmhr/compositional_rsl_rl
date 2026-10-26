@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "compositional_rsl_rl"
-version = "0.1.0"
+version = "0.2.0.dev0"
 description = "Simulator-independent network and loss composition for RSL-RL"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "BSD-3-Clause"}
-dependencies = ["rsl-rl-lib==5.5.1"]
+dependencies = ["rsl-rl-lib @ git+https://github.com/jnskkmhr/rsl_rl.git@ace7c23aa71a044bd30b0f2d39e8707a87243023"]
 
 [project.urls]
 Repository = "https://github.com/jnskkmhr/compositional_rsl_rl"
@@ -18,7 +18,7 @@ Repository = "https://github.com/jnskkmhr/compositional_rsl_rl"
 test = ["pytest", "onnx", "onnxruntime"]
 
 [tool.setuptools]
-license-files = ["LICENSE", "licenses/dependencies/IsaacLab.txt"]
+license-files = ["LICENSE", "licenses/dependencies/IsaacLab.txt", "licenses/dependencies/FlashSAC.txt"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

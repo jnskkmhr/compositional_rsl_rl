@@ -8,6 +8,9 @@
 from dataclasses import dataclass, field
 
 from compositional_rsl_rl.algorithm.algorithm_cfg import CompositionalPPOAlgorithmCfg
+from compositional_rsl_rl.algorithm.flash_sac_cfg import (
+    CompositionalFlashSACAlgorithmCfg,
+)
 from compositional_rsl_rl.env_interface import EnvInterfaceCfg
 from compositional_rsl_rl.loss.loss_cfg import LossesCfg
 from compositional_rsl_rl.network.network_cfg import NetworkCfg
@@ -46,3 +49,36 @@ class CompositionalRunnerCfg:
     load_run: str = ".*"
     load_checkpoint: str = "model_.*.pt"
     torch_compile_mode: str | None = None
+
+
+@dataclass(kw_only=True)
+class CompositionalOffPolicyRunnerCfg:
+    """Configure native FlashSAC collection and replay independently of PPO rollouts."""
+
+    networks: NetworkCfg
+    algorithm: CompositionalFlashSACAlgorithmCfg = field(default_factory=CompositionalFlashSACAlgorithmCfg)
+    loss: LossesCfg = field(default_factory=LossesCfg)
+    class_name: str = "OffPolicyRunner"
+    obs_groups: dict[str, list[str]] = field(default_factory=dict)
+    seed: int = 42
+    device: str = "cuda:0"
+    num_steps_per_env: int = 1
+    updates_per_step: int = 4
+    batch_size: int = 2048
+    replay_capacity: int = 1_000_000
+    replay_max_bytes: int = 3072 * 1024**2
+    warmup_transitions: int = 100_000
+    n_step: int = 3
+    max_iterations: int = 100_000
+    init_at_random_ep_len: bool = False
+    clip_actions: None = None
+    check_for_nan: bool = True
+    save_interval: int = 1000
+    experiment_name: str = "compositional_flash_sac"
+    run_name: str = ""
+    logger: str = "tensorboard"
+    wandb_project: str = "compositional_flash_sac"
+    resume: bool = False
+    load_run: str = ".*"
+    load_checkpoint: str = "model_.*.pt"
+    torch_compile_mode: None = None

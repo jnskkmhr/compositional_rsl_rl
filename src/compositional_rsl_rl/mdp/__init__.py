@@ -3,4 +3,4 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Reusable learning terms; no simulator state or environment manager dependencies."""
+"""Compatibility import; use compositional_rsl_rl.components in new configurations."""

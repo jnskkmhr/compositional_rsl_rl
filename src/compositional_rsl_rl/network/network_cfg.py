@@ -26,11 +26,32 @@ class HeteroscedasticGaussianDistributionCfg(GaussianDistributionCfg):
 
 
 @dataclass(kw_only=True)
+class SquashedGaussianDistributionCfg:
+    """State-dependent Gaussian followed by a tanh action transform."""
+
+    class_name: str = "SquashedGaussianDistribution"
+    log_std_min: float = -10.0
+    log_std_max: float = 2.0
+
+
+@dataclass(kw_only=True)
+class CategoricalValueDistributionCfg:
+    """Categorical return support, independent of the network architecture."""
+
+    class_name: str = "CategoricalValueDistribution"
+    num_bins: int = 101
+    value_min: float = -5.0
+    value_max: float = 5.0
+
+
+@dataclass(kw_only=True)
 class MLPNetworkCfg:
     """One named term; input names reference observations or other network terms."""
 
     GaussianDistributionCfg: ClassVar = GaussianDistributionCfg
     HeteroscedasticGaussianDistributionCfg: ClassVar = HeteroscedasticGaussianDistributionCfg
+    SquashedGaussianDistributionCfg: ClassVar = SquashedGaussianDistributionCfg
+    CategoricalValueDistributionCfg: ClassVar = CategoricalValueDistributionCfg
 
     input: list[str]
     class_name: str = "MLPModel"
@@ -38,7 +59,9 @@ class MLPNetworkCfg:
     hidden_dims: list[int] = field(default_factory=lambda: [256, 256])
     activation: str = "elu"
     obs_normalization: bool = False
-    distribution_cfg: GaussianDistributionCfg | dict | None = None
+    distribution_cfg: (
+        GaussianDistributionCfg | SquashedGaussianDistributionCfg | CategoricalValueDistributionCfg | dict | None
+    ) = None
     frozen: bool = False
     pretrained_cfg: dict | None = None
 
@@ -47,12 +70,14 @@ class MLPNetworkCfg:
 class ActorHeadCfg(MLPNetworkCfg):
     """Actor term whose output dimension is supplied by the environment."""
 
-    distribution_cfg: GaussianDistributionCfg | dict | None = field(default_factory=GaussianDistributionCfg)
+    distribution_cfg: GaussianDistributionCfg | SquashedGaussianDistributionCfg | dict | None = field(
+        default_factory=GaussianDistributionCfg
+    )
 
 
 @dataclass(kw_only=True)
 class CriticHeadCfg(MLPNetworkCfg):
-    """Value term whose output dimension is one."""
+    """Scalar value or Q term; the learner supplies actions for an action-conditioned critic."""
 
 
 @dataclass(kw_only=True)

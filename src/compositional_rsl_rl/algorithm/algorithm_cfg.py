@@ -3,9 +3,17 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Simulator-independent configuration for compositional PPO."""
+"""Simulator-independent algorithm and learning-parameter schedule configurations."""
 
 from dataclasses import dataclass
+
+
+@dataclass(kw_only=True)
+class SchedulerCfg:
+    """Numeric schedule: linear ramp or discrete milestones, measured in completed collection steps."""
+
+    type: str
+    params: dict
 
 
 @dataclass(kw_only=True)

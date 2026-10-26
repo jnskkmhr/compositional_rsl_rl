@@ -3,12 +3,10 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Stateless criteria usable through SupervisedLossCfg.loss_fn."""
+"""Compatibility import; use compositional_rsl_rl.components in new configurations."""
 
-import torch
-import torch.nn.functional as functional
+from compositional_rsl_rl.components.loss.loss import (
+    cosine_distance,
+)
 
-
-def cosine_distance(prediction: torch.Tensor, target: torch.Tensor, eps: float = 1.0e-8) -> torch.Tensor:
-    """Return mean cosine distance over final-axis feature vectors (zero vectors have distance one)."""
-    return (1.0 - functional.cosine_similarity(prediction, target, dim=-1, eps=eps)).mean()
+__all__ = ["cosine_distance"]
