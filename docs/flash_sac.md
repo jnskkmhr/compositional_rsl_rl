@@ -6,8 +6,8 @@ Install directly from GitHub:
 python -m pip install 'git+https://github.com/jnskkmhr/compositional_rsl_rl.git@jnskkmhr/flash-sac'
 ```
 
-This development version (`0.2.0.dev1`) declares its RSL-RL dependency as a standard direct Git
-requirement pinned to `e778b1573375350f76f834e35f321d02f1441785` (`5.5.1+flashsac.2`). pip and uv install it automatically,
+This development version (`0.2.0.dev2`) declares its RSL-RL dependency as a standard direct Git
+requirement pinned to `8b90bdeb7e047b2200de6874ca7630bfd47fe6a7` (`5.5.1+flashsac.3`). pip and uv install it automatically,
 including when this package is installed as another project's dependency. No local sibling
 checkout or dependency-level uv override is required.
 
@@ -172,3 +172,18 @@ formatting passed; IsaacLab's global changelog check still reports unrelated exi
 `save_interval_updates`. These configure the native runner's replay transform,
 wall-time stopping budget, and checkpoint cadence in learner updates. Their
 defaults preserve iteration-based training without a replay transform.
+
+
+## Multi-GPU training
+
+The native off-policy runner supports one synchronized learner replica per
+`torchrun` process. The compositional adapter synchronizes all graph terms,
+including frozen encoders and separately optimized auxiliary models, and averages
+auxiliary gradients with the same reducer as actor/critic/temperature gradients.
+Symmetry augmentation runs on each rank's local replay minibatch.
+
+Environment count, replay limits, warmup transitions, and batch size are per rank;
+the global effective minibatch grows with GPU count. Local batch-normalization
+statistics are used during training, with running buffers averaged after updates
+for consistent inference. Rank zero owns logs and checkpoints. See RSL-RL's
+FlashSAC documentation for deadline, normalization, and resume semantics.

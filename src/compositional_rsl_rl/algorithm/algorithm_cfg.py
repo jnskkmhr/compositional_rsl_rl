@@ -64,5 +64,6 @@ class CompositionalFlashSACAlgorithmCfg:
     noise_max_repeat: int = 16
     action_support: float = 1.0
     use_amp: bool = False
+    grad_reduce_bucket_mb: float = 25
     symmetry_cfg: dict | None = None
     curriculum_cfg: dict[str, SchedulerCfg | dict] | None = None

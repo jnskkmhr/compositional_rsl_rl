@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "compositional_rsl_rl"
-version = "0.2.0.dev1"
+version = "0.2.0.dev2"
 description = "Simulator-independent network and loss composition for RSL-RL"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "BSD-3-Clause"}
-dependencies = ["rsl-rl-lib @ git+https://github.com/jnskkmhr/rsl_rl.git@e778b1573375350f76f834e35f321d02f1441785"]
+dependencies = ["rsl-rl-lib @ git+https://github.com/jnskkmhr/rsl_rl.git@8b90bdeb7e047b2200de6874ca7630bfd47fe6a7"]
 
 [project.urls]
 Repository = "https://github.com/jnskkmhr/compositional_rsl_rl"

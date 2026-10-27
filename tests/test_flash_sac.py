@@ -33,8 +33,14 @@ def setup():
         },
     }
     cfg["networks"] = {
-        "actor_encoder": asdict(ResidualNetworkCfg(input=["policy"], output_dim=8, num_blocks=1)),
-        "critic_encoder": asdict(ResidualNetworkCfg(input=["policy"], output_dim=8, num_blocks=1, num_ensembles=2)),
+        "actor_encoder": asdict(
+            ResidualNetworkCfg(input=["policy"], output_dim=8, num_blocks=1)
+        ),
+        "critic_encoder": asdict(
+            ResidualNetworkCfg(
+                input=["policy"], output_dim=8, num_blocks=1, num_ensembles=2
+            )
+        ),
         "actor": asdict(
             ActorHeadCfg(
                 class_name="compositional_rsl_rl.components.network:LinearNetwork",
@@ -48,7 +54,9 @@ def setup():
                 class_name="compositional_rsl_rl.components.network:LinearNetwork",
                 input=["critic_encoder"],
                 hidden_dims=[],
-                distribution_cfg=CriticHeadCfg.CategoricalValueDistributionCfg(num_bins=11),
+                distribution_cfg=CriticHeadCfg.CategoricalValueDistributionCfg(
+                    num_bins=11
+                ),
             )
         ),
     }
@@ -91,15 +99,25 @@ def test_composition_without_auxiliary_loss_matches_native_updates():
         for name in ("actor", "critic", "target_critic"):
             graph = getattr(comp, name)
             for key, value in graph.state_dict().items():
-                torch.testing.assert_close(value, getattr(plain, name).state_dict()[key])
+                torch.testing.assert_close(
+                    value, getattr(plain, name).state_dict()[key]
+                )
     torch.testing.assert_close(comp.get_policy()(obs), plain.deterministic_actions(obs))
 
 
 @pytest.mark.parametrize("phase", ["actor", "critic", "separate"])
 def test_auxiliary_losses_train_only_selected_replay_predictor(phase):
     obs, cfg, batch = setup()
-    cfg["algorithm"]["symmetry_cfg"] = {"data_augmentation_func": mirror, "use_data_augmentation": True}
-    cfg["networks"]["estimator"] = {"class_name": "MLPModel", "input": ["policy"], "output_dim": 2, "hidden_dims": [8]}
+    cfg["algorithm"]["symmetry_cfg"] = {
+        "data_augmentation_func": mirror,
+        "use_data_augmentation": True,
+    }
+    cfg["networks"]["estimator"] = {
+        "class_name": "MLPModel",
+        "input": ["policy"],
+        "output_dim": 2,
+        "hidden_dims": [8],
+    }
     cfg["loss"] = {
         "estimate": {
             "prediction": "estimator",
@@ -110,14 +128,19 @@ def test_auxiliary_losses_train_only_selected_replay_predictor(phase):
         }
     }
     batch["next_observations", "label"] = torch.ones(8, 2) * 3
-    alg = CompositionalFlashSAC.construct_algorithm(obs, SimpleNamespace(num_actions=1), cfg, "cpu")
+    alg = CompositionalFlashSAC.construct_algorithm(
+        obs, SimpleNamespace(num_actions=1), cfg, "cpu"
+    )
     before = copy.deepcopy(alg.networks.terms["estimator"].state_dict())
     state = copy.deepcopy(alg.save())
     alg.update(batch)
     assert any(
-        not torch.equal(value, before[key]) for key, value in alg.networks.terms["estimator"].state_dict().items()
+        not torch.equal(value, before[key])
+        for key, value in alg.networks.terms["estimator"].state_dict().items()
     )
-    restored = CompositionalFlashSAC.construct_algorithm(obs, SimpleNamespace(num_actions=1), cfg, "cpu")
+    restored = CompositionalFlashSAC.construct_algorithm(
+        obs, SimpleNamespace(num_actions=1), cfg, "cpu"
+    )
     restored.load(state)
     for key, value in restored.networks.terms["estimator"].state_dict().items():
         torch.testing.assert_close(value, before[key])
@@ -126,13 +149,22 @@ def test_auxiliary_losses_train_only_selected_replay_predictor(phase):
 
 def test_trainable_shared_encoder_is_rejected_and_frozen_encoder_is_supported():
     obs, cfg, batch = setup()
-    cfg["networks"]["encoder"] = {"class_name": "MLPModel", "input": ["policy"], "output_dim": 3, "hidden_dims": [8]}
+    cfg["networks"]["encoder"] = {
+        "class_name": "MLPModel",
+        "input": ["policy"],
+        "output_dim": 3,
+        "hidden_dims": [8],
+    }
     for head in ("actor", "critic"):
         cfg["networks"][head + "_encoder"]["input"] = ["encoder"]
     with pytest.raises(ValueError, match="share trainable"):
-        CompositionalFlashSAC.construct_algorithm(obs, SimpleNamespace(num_actions=1), cfg, "cpu")
+        CompositionalFlashSAC.construct_algorithm(
+            obs, SimpleNamespace(num_actions=1), cfg, "cpu"
+        )
     cfg["networks"]["encoder"]["frozen"] = True
-    alg = CompositionalFlashSAC.construct_algorithm(obs, SimpleNamespace(num_actions=1), cfg, "cpu")
+    alg = CompositionalFlashSAC.construct_algorithm(
+        obs, SimpleNamespace(num_actions=1), cfg, "cpu"
+    )
     before = copy.deepcopy(alg.networks.terms["encoder"].state_dict())
     alg.update(batch)
     for key, value in alg.networks.terms["encoder"].state_dict().items():
@@ -184,11 +216,15 @@ def test_compositional_runner_checkpoint_and_actor_exports(tmp_path):
             updates_per_step=1,
         )
     )
-    runner_cfg["algorithm"].update(num_bins=11, normalize_reward=False, critic_action_input="critic_encoder")
+    runner_cfg["algorithm"].update(
+        num_bins=11, normalize_reward=False, critic_action_input="critic_encoder"
+    )
     runner = OffPolicyRunner(Env(), runner_cfg)
     runner.learn(6)
     assert runner.alg.update_step == 4
-    assert runner.replay.storage[0]["next_observations", "policy"].equal(obs[0]["policy"] + 1)
+    assert runner.replay.storage[0]["next_observations", "policy"].equal(
+        obs[0]["policy"] + 1
+    )
     runner.save(str(tmp_path / "checkpoint.pt"))
     restored = OffPolicyRunner(Env(), runner_cfg)
     with pytest.warns(UserWarning, match="fresh replay"):
@@ -197,9 +233,13 @@ def test_compositional_runner_checkpoint_and_actor_exports(tmp_path):
     expected = restored.get_inference_policy()(obs[:2])
     torch.testing.assert_close(expected, runner.get_inference_policy()(obs[:2]))
     restored.export_policy_to_jit(str(tmp_path))
-    torch.testing.assert_close(torch.jit.load(str(tmp_path / "policy.pt"))(obs[:2]["policy"]), expected)
+    torch.testing.assert_close(
+        torch.jit.load(str(tmp_path / "policy.pt"))(obs[:2]["policy"]), expected
+    )
     restored.export_policy_to_onnx(str(tmp_path))
-    session = onnxruntime.InferenceSession(str(tmp_path / "policy.onnx"), providers=["CPUExecutionProvider"])
+    session = onnxruntime.InferenceSession(
+        str(tmp_path / "policy.onnx"), providers=["CPUExecutionProvider"]
+    )
     actual = session.run(None, {"obs": obs[:2]["policy"].numpy()})[0]
     torch.testing.assert_close(torch.from_numpy(actual), expected, atol=1e-5, rtol=1e-5)
 
@@ -211,9 +251,13 @@ def test_q_input_width_and_action_gradient_are_independent_of_backbone():
         if not use_residual:
             for head in ("actor", "critic"):
                 cfg["networks"].pop(head + "_encoder")
-                cfg["networks"][head].update(class_name="MLPModel", input=["policy"], hidden_dims=[8])
+                cfg["networks"][head].update(
+                    class_name="MLPModel", input=["policy"], hidden_dims=[8]
+                )
             cfg["algorithm"]["critic_action_input"] = "critic"
-        alg = CompositionalFlashSAC.construct_algorithm(obs, SimpleNamespace(num_actions=1), cfg, "cpu")
+        alg = CompositionalFlashSAC.construct_algorithm(
+            obs, SimpleNamespace(num_actions=1), cfg, "cpu"
+        )
         assert alg.obs_groups["critic"] == ["policy"]
         name = "critic_encoder" if use_residual else "critic"
         model = alg.networks.terms[name]
@@ -233,17 +277,25 @@ def test_q_input_width_and_action_gradient_are_independent_of_backbone():
 def test_distribution_settings_reach_actor_and_critic_projections():
     """Public head parameters control actual scales and return support."""
     obs, cfg, _ = setup()
-    cfg["networks"]["actor"]["distribution_cfg"].update(log_std_min=-3.0, log_std_max=-1.0)
+    cfg["networks"]["actor"]["distribution_cfg"].update(
+        log_std_min=-3.0, log_std_max=-1.0
+    )
     cfg["networks"]["critic"]["distribution_cfg"].update(value_min=-7.0, value_max=7.0)
     cfg["algorithm"]["value_max"] = 7.0
-    alg = CompositionalFlashSAC.construct_algorithm(obs, SimpleNamespace(num_actions=1), cfg, "cpu")
+    alg = CompositionalFlashSAC.construct_algorithm(
+        obs, SimpleNamespace(num_actions=1), cfg, "cpu"
+    )
     _, std = alg.actor.get_mean_and_std(obs, training=False)
     assert (std >= torch.exp(torch.tensor(-3.0))).all()
     assert (std <= torch.exp(torch.tensor(-1.0))).all()
     torch.testing.assert_close(alg.critic.value_support, torch.linspace(-7, 7, 11))
-    cfg["networks"]["actor"]["distribution_cfg"].update(log_std_min=2.0, log_std_max=-1.0)
+    cfg["networks"]["actor"]["distribution_cfg"].update(
+        log_std_min=2.0, log_std_max=-1.0
+    )
     with pytest.raises(ValueError, match="strictly increasing"):
-        CompositionalFlashSAC.construct_algorithm(obs, SimpleNamespace(num_actions=1), cfg, "cpu")
+        CompositionalFlashSAC.construct_algorithm(
+            obs, SimpleNamespace(num_actions=1), cfg, "cpu"
+        )
 
 
 def test_residual_backbone_with_existing_ppo_heads_and_gaussian_settings():
@@ -251,7 +303,9 @@ def test_residual_backbone_with_existing_ppo_heads_and_gaussian_settings():
     from compositional_rsl_rl.network import NetworkManager, GraphModel
 
     obs, cfg, _ = setup()
-    cfg["networks"]["actor"]["distribution_cfg"] = asdict(ActorHeadCfg.GaussianDistributionCfg(init_std=0.7))
+    cfg["networks"]["actor"]["distribution_cfg"] = asdict(
+        ActorHeadCfg.GaussianDistributionCfg(init_std=0.7)
+    )
     for head in ("actor", "critic"):
         cfg["networks"][head]["class_name"] = "MLPModel"
     cfg["networks"]["critic"]["distribution_cfg"] = None
@@ -291,7 +345,11 @@ def test_curriculum_cfg_serialization_and_compositional_optimizer_replacement():
 
     obs, cfg, batch = setup()
     cfg["algorithm"]["curriculum_cfg"] = {
-        "learning_rate": asdict(SchedulerCfg(type="discrete", params={"steps": [0, 2], "values": [1e-4, 5e-5]})),
+        "learning_rate": asdict(
+            SchedulerCfg(
+                type="discrete", params={"steps": [0, 2], "values": [1e-4, 5e-5]}
+            )
+        ),
         "action_support": asdict(
             SchedulerCfg(
                 type="linear",
@@ -304,13 +362,133 @@ def test_curriculum_cfg_serialization_and_compositional_optimizer_replacement():
             )
         ),
     }
-    alg = CompositionalFlashSAC.construct_algorithm(obs, SimpleNamespace(num_actions=1), cfg, "cpu")
-    assert all(opt.param_groups[0]["lr"] == pytest.approx(1e-4) for opt in alg.optimizers.values())
+    alg = CompositionalFlashSAC.construct_algorithm(
+        obs, SimpleNamespace(num_actions=1), cfg, "cpu"
+    )
+    assert all(
+        opt.param_groups[0]["lr"] == pytest.approx(1e-4)
+        for opt in alg.optimizers.values()
+    )
     alg.update_curriculum(2)
     alg.update(batch)
     assert alg.get_policy().action_support == 3
-    assert all(opt.param_groups[0]["lr"] == pytest.approx(5e-5) for opt in alg.optimizers.values())
-    restored = CompositionalFlashSAC.construct_algorithm(obs, SimpleNamespace(num_actions=1), cfg, "cpu")
+    assert all(
+        opt.param_groups[0]["lr"] == pytest.approx(5e-5)
+        for opt in alg.optimizers.values()
+    )
+    restored = CompositionalFlashSAC.construct_algorithm(
+        obs, SimpleNamespace(num_actions=1), cfg, "cpu"
+    )
     restored.load(copy.deepcopy(alg.save()))
     assert restored.curriculum_step == 2 and restored.action_support == 3
     torch.testing.assert_close(restored.get_policy()(obs), alg.get_policy()(obs))
+
+
+def _distributed_graph_worker(rank, rendezvous, output):
+    """Exercise the actual residual graphs, symmetry and separate auxiliary optimizer."""
+    from datetime import timedelta
+    from pathlib import Path
+    import torch.distributed as dist
+
+    torch.set_num_threads(1)
+    dist.init_process_group(
+        "gloo",
+        init_method=rendezvous,
+        rank=rank,
+        world_size=2,
+        timeout=timedelta(seconds=30),
+    )
+    try:
+        torch.manual_seed(70 + rank)
+        obs, cfg, batch = setup()
+        obs["policy"] += rank * 5
+        batch["next_observations", "label"] += rank * 3
+        cfg["multi_gpu"] = dict(global_rank=rank, local_rank=rank, world_size=2)
+        cfg["algorithm"]["symmetry_cfg"] = {
+            "data_augmentation_func": mirror,
+            "use_data_augmentation": True,
+        }
+        cfg["networks"]["estimator"] = {
+            "class_name": "MLPModel",
+            "input": ["policy"],
+            "output_dim": 2,
+            "hidden_dims": [8],
+        }
+        cfg["loss"] = {
+            "estimate": {
+                "prediction": "estimator",
+                "target": "next_label",
+                "trains": ["estimator"],
+                "optimizer": "separate",
+                "learning_rate": 1e-3,
+            }
+        }
+        cfg["networks"]["frozen"] = {
+            "class_name": "MLPModel",
+            "input": ["policy"],
+            "output_dim": 3,
+            "hidden_dims": [8],
+            "frozen": True,
+        }
+        for head in ("actor", "critic"):
+            cfg["networks"][head + "_encoder"]["input"] = ["frozen"]
+        alg = CompositionalFlashSAC.construct_algorithm(
+            obs, SimpleNamespace(num_actions=1), cfg, "cpu"
+        )
+        alg.broadcast_parameters()
+        estimator_before = copy.deepcopy(alg.networks.terms["estimator"].state_dict())
+        for _ in range(4):
+            metrics = alg.update(batch)
+            assert all(torch.isfinite(value).all() for value in metrics.values())
+        assert any(
+            not torch.equal(v, estimator_before[k])
+            for k, v in alg.networks.terms["estimator"].state_dict().items()
+        )
+        probe = TensorDict({"policy": torch.ones(5, 3)}, [5])
+        torch.save(
+            {"state": alg.save(), "actions": alg.get_policy()(probe).detach()},
+            Path(output) / f"graph-{rank}.pt",
+        )
+    finally:
+        dist.destroy_process_group()
+
+
+def test_distributed_graph_keeps_normalization_and_auxiliary_models_synchronized(
+    tmp_path,
+):
+    """Different minibatches must leave one deployable actor and synchronized auxiliary/target state."""
+    import torch.multiprocessing as mp
+
+    context = mp.get_context("spawn")
+    rendezvous = "file://" + str(tmp_path / "rendezvous")
+    processes = [
+        context.Process(
+            target=_distributed_graph_worker, args=(rank, rendezvous, str(tmp_path))
+        )
+        for rank in range(2)
+    ]
+    for process in processes:
+        process.start()
+    try:
+        for process in processes:
+            process.join(timeout=45)
+        assert all(p.exitcode == 0 for p in processes), [p.exitcode for p in processes]
+    finally:
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+    first, second = [
+        torch.load(tmp_path / f"graph-{rank}.pt", weights_only=False)
+        for rank in range(2)
+    ]
+    torch.testing.assert_close(first["actions"], second["actions"], rtol=0, atol=0)
+    for key, value in first["state"]["networks"].items():
+        torch.testing.assert_close(
+            value, second["state"]["networks"][key], rtol=0, atol=0
+        )
+    for name, model in first["state"]["models"].items():
+        for key, value in model.items():
+            torch.testing.assert_close(
+                value, second["state"]["models"][name][key], rtol=0, atol=0
+            )

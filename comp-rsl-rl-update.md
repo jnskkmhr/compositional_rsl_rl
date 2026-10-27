@@ -29,8 +29,8 @@ update integrates the main IsaacLab checkout and adds registered rigid G1 agent 
 
 ## Compatibility and scope
 
-The development package versions remain `rsl-rl-lib==5.5.1+flashsac.2` and
-`compositional_rsl_rl==0.2.0.dev1`. The compositional package now pins its RSL-RL dependency
+The development package versions remain `rsl-rl-lib==5.5.1+flashsac.3` and
+`compositional_rsl_rl==0.2.0.dev2`. The compositional package now pins its RSL-RL dependency
 to an immutable Git commit using standard dependency metadata. The FlashSAC branches are
 published on GitHub; these are development builds, not upstream or PyPI releases. The newly introduced FlashSAC constructor/head paths
 from the earlier implementation are superseded; no implicit architecture or compatibility fallback
