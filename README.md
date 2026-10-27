@@ -1,6 +1,6 @@
 # Compositional RL
 
-An independently installable extension to the **RSL-RL FlashSAC fork (`5.5.1+flashsac.3`)**. Network terms and loss terms are
+An independently installable extension to the **RSL-RL FlashSAC fork (`5.5.1+flashsac.4`)**. Network terms and loss terms are
 configured separately. Actor, critic, estimator, and decoder are peer terms; there is no special encoder
 container and no mandatory MLP appended to a separate composition model.
 
@@ -925,7 +925,7 @@ Recurrent JIT retains upstream batch-one internal state and its `reset()` method
 
 ## Compatibility boundaries and maintenance
 
-- Supported dependency: **RSL-RL `5.5.1+flashsac.3`**, the commit-pinned FlashSAC fork of 5.5.1. This is not a promise of compatibility
+- Supported dependency: **RSL-RL `5.5.1+flashsac.4`**, the commit-pinned FlashSAC fork of 5.5.1. This is not a promise of compatibility
   with every past/future RSL-RL or IsaacLab version.
 - Configs use standard dataclasses. Only the IsaacLab task example uses its `configclass` decorator
   to support its task configuration and CLI utilities. The inspected train/play/export backend selects

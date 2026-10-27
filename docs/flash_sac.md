@@ -6,8 +6,8 @@ Install directly from GitHub:
 python -m pip install 'git+https://github.com/jnskkmhr/compositional_rsl_rl.git@jnskkmhr/flash-sac'
 ```
 
-This development version (`0.2.0.dev2`) declares its RSL-RL dependency as a standard direct Git
-requirement pinned to `8b90bdeb7e047b2200de6874ca7630bfd47fe6a7` (`5.5.1+flashsac.3`). pip and uv install it automatically,
+This development version (`0.2.0.dev3`) declares its RSL-RL dependency as a standard direct Git
+requirement pinned to `31c3c41e244008e699604ad88b7bae877cb6cb22` (`5.5.1+flashsac.4`). pip and uv install it automatically,
 including when this package is installed as another project's dependency. No local sibling
 checkout or dependency-level uv override is required.
 
@@ -168,11 +168,10 @@ used a shortened ramp, reached action support four, and verified the applied ste
 Playback, JIT/ONNX and LEAPP export from that checkpoint passed. Source lint and edited-file
 formatting passed; IsaacLab's global changelog check still reports unrelated existing fragment errors.
 
-`CompositionalOffPolicyRunnerCfg` exposes `replay_cfg`, `max_time_s`, and
-`save_interval_updates`. These configure the native runner's replay transform,
-wall-time stopping budget, and checkpoint cadence in learner updates. Their
-defaults preserve iteration-based training without a replay transform.
-
+`CompositionalOffPolicyRunnerCfg` exposes `replay_cfg` for task-specific replay
+transforms. `max_iterations` controls training length and `save_interval` controls
+checkpoint frequency in training iterations. Both are independent of learner
+updates per collection step.
 
 ## Multi-GPU training
 
@@ -186,4 +185,4 @@ Environment count, replay limits, warmup transitions, and batch size are per ran
 the global effective minibatch grows with GPU count. Local batch-normalization
 statistics are used during training, with running buffers averaged after updates
 for consistent inference. Rank zero owns logs and checkpoints. See RSL-RL's
-FlashSAC documentation for deadline, normalization, and resume semantics.
+FlashSAC documentation for iteration, normalization, and resume semantics.

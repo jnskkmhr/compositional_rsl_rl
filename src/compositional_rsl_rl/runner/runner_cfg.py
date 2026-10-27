@@ -74,8 +74,6 @@ class CompositionalOffPolicyRunnerCfg:
     warmup_transitions: int = 100_000
     n_step: int = 3
     replay_cfg: dict | None = None
-    max_time_s: float | None = None
-    save_interval_updates: int | None = None
     max_iterations: int = 100_000
     init_at_random_ep_len: bool = False
     clip_actions: None = None
