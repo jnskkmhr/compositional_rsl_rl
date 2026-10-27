@@ -22,16 +22,12 @@ class CompositionalFlashSAC(FlashSAC):
     """FlashSAC with explicit actor, critic and separate auxiliary optimizer ownership."""
 
     @staticmethod
-    def construct_algorithm(
-        obs: TensorDict, env: VecEnv, cfg: dict, device: str
-    ) -> FlashSAC:
+    def construct_algorithm(obs: TensorDict, env: VecEnv, cfg: dict, device: str) -> FlashSAC:
         """Build disjoint trainable branches and retain the base algorithm's optimization schedule."""
         if cfg.get("torch_compile_mode"):
             raise ValueError("CompositionalFlashSAC currently supports eager training.")
         if cfg.get("networks") is None:
-            raise ValueError(
-                "CompositionalFlashSAC requires an explicit networks configuration."
-            )
+            raise ValueError("CompositionalFlashSAC requires an explicit networks configuration.")
         alg_cfg = copy.deepcopy(cfg["algorithm"])
         alg_cfg.pop("class_name")
         action_input = alg_cfg.pop("critic_action_input", "critic")
@@ -63,58 +59,33 @@ class CompositionalFlashSAC(FlashSAC):
         next_keys = {"next_" + key for key in obs_keys}
         loss_keys = obs_keys | next_keys
         if obs_keys & next_keys:
-            raise ValueError(
-                "Observation names collide with next-observation auxiliary labels."
-            )
-        losses = LossManager(
-            networks, cfg.get("loss") or {}, loss_keys, joint_phases=("actor", "critic")
-        )
+            raise ValueError("Observation names collide with next-observation auxiliary labels.")
+        losses = LossManager(networks, cfg.get("loss") or {}, loss_keys, joint_phases=("actor", "critic"))
         owned = {head: set(networks.dependencies(head)) for head in ("actor", "critic")}
         for term in losses.terms.values():
             if term["prediction"] in ("actor", "critic") or term["target"] in (
                 "actor",
                 "critic",
             ):
-                raise ValueError(
-                    "SAC auxiliary losses require explicit auxiliary prediction/target terms."
-                )
+                raise ValueError("SAC auxiliary losses require explicit auxiliary prediction/target terms.")
             if term["mode"] in owned:
                 owned[term["mode"]].update(term["trains"])
-        trainable = {
-            head: owned[head] - networks.frozen - networks.separate for head in owned
-        }
+        trainable = {head: owned[head] - networks.frozen - networks.separate for head in owned}
         if trainable["actor"] & trainable["critic"]:
-            raise ValueError(
-                "Actor and critic cannot share trainable graph terms; share only frozen terms."
-            )
-        if action_input not in networks.dependencies(
-            "critic"
-        ) or action_input in networks.dependencies("actor"):
-            raise ValueError(
-                "critic_action_input must belong exclusively to the critic graph."
-            )
-        if any(
-            action_input in networks.dependencies(name) for name in networks.separate
-        ):
-            raise ValueError(
-                "Action-conditioned terms cannot be detached by a separate optimizer."
-            )
+            raise ValueError("Actor and critic cannot share trainable graph terms; share only frozen terms.")
+        if action_input not in networks.dependencies("critic") or action_input in networks.dependencies("actor"):
+            raise ValueError("critic_action_input must belong exclusively to the critic graph.")
+        if any(action_input in networks.dependencies(name) for name in networks.separate):
+            raise ValueError("Action-conditioned terms cannot be detached by a separate optimizer.")
         models = {
-            head: FlashSACGraph(
-                networks, head, owned[head], action_input if head == "critic" else None
-            )
+            head: FlashSACGraph(networks, head, owned[head], action_input if head == "critic" else None)
             for head in owned
         }
         actor_distribution = networks.terms["actor"].distribution
         if not callable(getattr(actor_distribution, "rsample_with_log_prob", None)):
-            raise ValueError(
-                "FlashSAC requires a squashed Gaussian actor distribution with differentiable sampling."
-            )
+            raise ValueError("FlashSAC requires a squashed Gaussian actor distribution with differentiable sampling.")
         FlashSAC.validate_models(
-            models["actor"],
-            models["critic"],
-            alg_cfg.get("num_bins", 101),
-            alg_cfg.get("value_max", 5.0),
+            models["actor"], models["critic"], alg_cfg.get("num_bins", 101), alg_cfg.get("value_max", 5.0)
         )
         # Separate terms may supply detached features, but are not owned by the SAC optimizers.
         algorithm = CompositionalFlashSAC(
@@ -146,20 +117,10 @@ class CompositionalFlashSAC(FlashSAC):
             algorithm.schedulers[head] = torch.optim.lr_scheduler.LambdaLR(
                 algorithm.optimizers[head], algorithm._learning_rate_factor
             )
-        actor_ids = {
-            id(p)
-            for group in algorithm.optimizers["actor"].param_groups
-            for p in group["params"]
-        }
-        critic_ids = {
-            id(p)
-            for group in algorithm.optimizers["critic"].param_groups
-            for p in group["params"]
-        }
+        actor_ids = {id(p) for group in algorithm.optimizers["actor"].param_groups for p in group["params"]}
+        critic_ids = {id(p) for group in algorithm.optimizers["critic"].param_groups for p in group["params"]}
         if actor_ids & critic_ids:
-            raise ValueError(
-                "A parameter cannot belong to both actor and critic optimizers."
-            )
+            raise ValueError("A parameter cannot belong to both actor and critic optimizers.")
         return algorithm
 
     def actor_observations(self, obs: TensorDict) -> TensorDict:
@@ -183,9 +144,7 @@ class CompositionalFlashSAC(FlashSAC):
 
     def update_auxiliary(self, batch: TensorDict) -> dict[str, torch.Tensor]:
         """Train separate auxiliary terms from the sampled replay observations."""
-        _, separate, metrics = self.losses.compute(
-            self._loss_observations(batch), phase="separate"
-        )
+        _, separate, metrics = self.losses.compute(self._loss_observations(batch), phase="separate")
         for optimizer in self.losses.optimizers.values():
             optimizer.zero_grad(set_to_none=True)
         if separate:
@@ -193,22 +152,15 @@ class CompositionalFlashSAC(FlashSAC):
             for optimizer in self.losses.optimizers.values():
                 self.reduce_parameters(optimizer)
                 optimizer.step()
-        return {
-            f"auxiliary/{key}": torch.tensor(value, device=self.device)
-            for key, value in metrics.items()
-        }
+        return {f"auxiliary/{key}": torch.tensor(value, device=self.device) for key, value in metrics.items()}
 
     def broadcast_parameters(self) -> None:
         """Include frozen and separately optimized graph terms in initial synchronization."""
-        super().broadcast_parameters(
-            (self.networks, self.target_critic, self.temperature)
-        )
+        super().broadcast_parameters((self.networks, self.target_critic, self.temperature))
 
     def synchronize_buffers(self) -> None:
         """Share graph and target running statistics after all optimizer updates."""
-        super().synchronize_buffers(
-            (self.networks, self.target_critic, self.temperature)
-        )
+        super().synchronize_buffers((self.networks, self.target_critic, self.temperature))
 
     def save(self) -> dict:
         """Include graph and optimizer ownership so incompatible resumes fail explicitly."""
@@ -218,27 +170,16 @@ class CompositionalFlashSAC(FlashSAC):
             network_cfg=self.networks.cfg,
             critic_action_input=self.critic.action_input,
             loss_cfg=self.losses.cfg,
-            loss_optimizers={
-                key: value.state_dict() for key, value in self.losses.optimizers.items()
-            },
+            loss_optimizers={key: value.state_dict() for key, value in self.losses.optimizers.items()},
         )
         return state
 
-    def load(
-        self, state: dict, load_cfg: dict | None = None, strict: bool = True
-    ) -> bool:
+    def load(self, state: dict, load_cfg: dict | None = None, strict: bool = True) -> bool:
         """Restore matching composition checkpoints and auxiliary optimizer state."""
         if state.get("critic_action_input") != self.critic.action_input:
-            raise ValueError(
-                "FlashSAC critic action routing differs from the checkpoint."
-            )
-        if (
-            state.get("network_cfg") != self.networks.cfg
-            or state.get("loss_cfg") != self.losses.cfg
-        ):
-            raise ValueError(
-                "FlashSAC graph or loss ownership differs from the checkpoint."
-            )
+            raise ValueError("FlashSAC critic action routing differs from the checkpoint.")
+        if state.get("network_cfg") != self.networks.cfg or state.get("loss_cfg") != self.losses.cfg:
+            raise ValueError("FlashSAC graph or loss ownership differs from the checkpoint.")
         restore = super().load(state, load_cfg, strict)
         if load_cfg is None or (load_cfg.get("actor") and load_cfg.get("critic")):
             self.networks.load_state_dict(state["networks"], strict=strict)
@@ -249,27 +190,14 @@ class CompositionalFlashSAC(FlashSAC):
 
     def get_policy(self) -> FlashSACPolicy:
         """Export the actor branch without critic or auxiliary-only dependencies."""
-        actor = FlashSACGraph(
-            self.networks, "actor", set(self.networks.dependencies("actor"))
-        )
-        return FlashSACPolicy(
-            actor,
-            self.obs_groups["actor"],
-            self.action_support,
-            concatenate_observations=False,
-        )
+        actor = FlashSACGraph(self.networks, "actor", set(self.networks.dependencies("actor")))
+        return FlashSACPolicy(actor, self.obs_groups["actor"], self.action_support, concatenate_observations=False)
 
 
 class FlashSACGraph(NetworkManager):
     """Own one graph branch, sharing its registered terms with the composition manager."""
 
-    def __init__(
-        self,
-        manager: NetworkManager,
-        head: str,
-        owned: set[str],
-        action_input: str | None = None,
-    ) -> None:
+    def __init__(self, manager: NetworkManager, head: str, owned: set[str], action_input: str | None = None) -> None:
         """Retain branch ownership and the optional action-input connection."""
         nn.Module.__init__(self)
         self.head = head
@@ -295,10 +223,7 @@ class FlashSACGraph(NetworkManager):
         return graph
 
     def _raw_output(
-        self,
-        observations: TensorDict,
-        training: bool,
-        actions: torch.Tensor | None = None,
+        self, observations: TensorDict, training: bool, actions: torch.Tensor | None = None
     ) -> torch.Tensor:
         values = observations.clone(recurse=False)
         for name in self.dependencies(self.head):
@@ -308,17 +233,13 @@ class FlashSACGraph(NetworkManager):
             if name == self.head:
                 return model.mlp(model.get_latent(values, **kwargs))
             if callable(getattr(model, "forward_with_mode", None)):
-                result = model.forward_with_mode(
-                    values, training=training and name not in self.frozen, **kwargs
-                )
+                result = model.forward_with_mode(values, training=training and name not in self.frozen, **kwargs)
             else:
                 result = model(values, **kwargs)
             values[name] = result.detach() if name in self.separate else result
         raise RuntimeError("The graph has no output head.")
 
-    def get_mean_and_std(
-        self, observations: TensorDict, training: bool
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    def get_mean_and_std(self, observations: TensorDict, training: bool) -> tuple[torch.Tensor, torch.Tensor]:
         """Evaluate feature terms and obtain pre-tanh actor distribution parameters."""
         output = self._raw_output(observations, training)
         return self.terms[self.head].distribution.get_mean_and_std(output)
@@ -339,6 +260,4 @@ class FlashSACGraph(NetworkManager):
         # Named terms keep batch first; the core Q learner expects ensemble first.
         if values.ndim == 2:
             values, log_prob = values.unsqueeze(1), log_prob.unsqueeze(1)
-        return values.squeeze(-1).transpose(0, 1), {
-            "log_prob": log_prob.transpose(0, 1)
-        }
+        return values.squeeze(-1).transpose(0, 1), {"log_prob": log_prob.transpose(0, 1)}
