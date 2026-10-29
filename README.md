@@ -955,3 +955,73 @@ ordinary RSL-RL checkpoint compatibility, simulator-blocked dataclass training i
 and real IsaacLab config serialization when IsaacLab is installed. Terrain checkpoint tests cover
 restored placement, reset cleanup, layout validation, weights-only transfer, and per-rank terrain
 state under a rank-zero-only save.
+
+## Holosoma FastSAC
+
+This `jnskkmhr/holosoma` branch pins the matching RSL-RL FastSAC commit, so
+installing it pulls both implementations. Existing IsaacLab tasks continue
+selecting FlashSAC until their agent configuration is changed explicitly.
+
+FastSAC uses ordinary heads with independent MLPs, LayerNorm and configurable
+output distributions. Observation normalization belongs to the learner, keeping
+critic actions outside the observation statistics. For the usual vector groups:
+
+```python
+from compositional_rsl_rl.algorithm import CompositionalFastSACAlgorithmCfg
+from compositional_rsl_rl.network import ActorHeadCfg, CriticHeadCfg, NetworkCfg
+from compositional_rsl_rl.runner import CompositionalFastSACRunnerCfg
+
+cfg = CompositionalFastSACRunnerCfg(
+    networks=NetworkCfg(
+        actor=ActorHeadCfg(
+            input=["policy", "command"],
+            hidden_dims=[512, 256, 128],
+            activation="swish",
+            layer_norm=True,
+            distribution_cfg=ActorHeadCfg.SquashedGaussianDistributionCfg(
+                log_std_min=-5.0, log_std_max=0.0, zero_init_output=True,
+            ),
+        ),
+        critic=CriticHeadCfg(
+            input=["critic", "command", "privileged"],
+            hidden_dims=[768, 384, 192],
+            activation="swish",
+            layer_norm=True,
+            num_ensembles=2,
+            distribution_cfg=CriticHeadCfg.CategoricalValueDistributionCfg(
+                num_bins=101, value_min=-20.0, value_max=20.0,
+            ),
+        ),
+    ),
+    algorithm=CompositionalFastSACAlgorithmCfg(),
+)
+```
+
+The learner appends `env.num_actions` to the critic input internally. `action_scale`
+is a positive scalar or a per-action list in the environment's raw action units;
+use the same action order as the environment. It defaults to 1, without inferring
+joint limits from simulator-specific assets. For Holosoma's joint-limit bounds,
+supply `max(abs(lower-default), abs(upper-default)) / env_action_scale` per joint.
+
+The runner defaults to one vector step, eight critic updates, batch size 8192
+(global across ranks), one-step returns, 50,000 iterations and saving every 1,000
+iterations. Learning starts after vector step 11, following Holosoma's zero-based
+`global_step > 10` condition. Replay retains 1,024 transitions per environment;
+set `replay_max_bytes` for the observation sizes and environment count in use.
+It raises an error rather than silently shrinking replay. AMP is opt-in, with
+`amp_dtype="bf16"`; execution is eager rather than compiled.
+
+The replay-wraparound, simultaneous termination/timeout and pooled-variance bugs
+are not reproduced. Policy frequency 1 updates the actor every update. Symmetry
+pairs remain in the same minibatch. The old FlashSAC algorithms and configs remain
+available. FastSAC checkpoints are distinct from FlashSAC checkpoints.
+
+To check numerical parity with the pinned reference checkout:
+
+```bash
+python tests/reference/holosoma_parity.py --reference-root /path/to/holosoma_agent
+python tests/reference/holosoma_parity.py --reference-root /path/to/holosoma_agent --normalize-obs
+```
+
+The second command explicitly corrects the reference's pooled-variance formula;
+all other reference learning computations are loaded unchanged from `a7fe4c9`.

@@ -5,7 +5,12 @@
 
 """Simulator-independent network and loss composition for RSL-RL."""
 
-from .algorithm import CompositionalFlashSAC, CompositionalPPO
+from .algorithm import CompositionalFastSAC, CompositionalFlashSAC, CompositionalPPO
 from .network import NetworkManager
 
-__all__ = ["CompositionalFlashSAC", "CompositionalPPO", "NetworkManager"]
+__all__ = [
+    "CompositionalFastSAC",
+    "CompositionalFlashSAC",
+    "CompositionalPPO",
+    "NetworkManager",
+]

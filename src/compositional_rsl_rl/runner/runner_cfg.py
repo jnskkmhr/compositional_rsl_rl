@@ -8,6 +8,7 @@
 from dataclasses import dataclass, field
 
 from compositional_rsl_rl.algorithm.algorithm_cfg import (
+    CompositionalFastSACAlgorithmCfg,
     CompositionalFlashSACAlgorithmCfg,
     CompositionalPPOAlgorithmCfg,
 )
@@ -27,9 +28,7 @@ class CompositionalRunnerCfg:
     networks: NetworkCfg
     env_interface: EnvInterfaceCfg | None = None
     loss: LossesCfg = field(default_factory=LossesCfg)
-    algorithm: CompositionalPPOAlgorithmCfg = field(
-        default_factory=CompositionalPPOAlgorithmCfg
-    )
+    algorithm: CompositionalPPOAlgorithmCfg = field(default_factory=CompositionalPPOAlgorithmCfg)
     class_name: str = "OnPolicyRunner"
     actor: None = None
     critic: None = None
@@ -58,9 +57,7 @@ class CompositionalOffPolicyRunnerCfg:
     """Configure native FlashSAC collection and replay independently of PPO rollouts."""
 
     networks: NetworkCfg
-    algorithm: CompositionalFlashSACAlgorithmCfg = field(
-        default_factory=CompositionalFlashSACAlgorithmCfg
-    )
+    algorithm: CompositionalFlashSACAlgorithmCfg = field(default_factory=CompositionalFlashSACAlgorithmCfg)
     loss: LossesCfg = field(default_factory=LossesCfg)
     class_name: str = "OffPolicyRunner"
     obs_groups: dict[str, list[str]] = field(default_factory=dict)
@@ -87,3 +84,25 @@ class CompositionalOffPolicyRunnerCfg:
     load_run: str = ".*"
     load_checkpoint: str = "model_.*.pt"
     torch_compile_mode: None = None
+
+
+@dataclass(kw_only=True)
+class CompositionalFastSACRunnerCfg(CompositionalOffPolicyRunnerCfg):
+    """Holosoma collection schedule; replay capacity is 1024 transitions per environment.
+
+    Increase replay_max_bytes explicitly for large observations/environment counts.
+    Batch size is global across ranks, matching Holosoma.
+    """
+
+    algorithm: CompositionalFastSACAlgorithmCfg = field(default_factory=CompositionalFastSACAlgorithmCfg)
+    updates_per_step: int = 8
+    batch_size: int = 8192
+    n_step: int = 1
+    batch_size_is_global: bool = True
+    learning_starts: int = 10
+    warmup_transitions: int = 1
+    replay_steps_per_env: int = 1024
+    max_iterations: int = 50_000
+    save_interval: int = 1000
+    experiment_name: str = "compositional_fast_sac"
+    wandb_project: str = "compositional_fast_sac"

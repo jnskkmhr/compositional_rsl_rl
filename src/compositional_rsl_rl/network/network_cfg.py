@@ -32,6 +32,7 @@ class SquashedGaussianDistributionCfg:
     class_name: str = "SquashedGaussianDistribution"
     log_std_min: float = -10.0
     log_std_max: float = 2.0
+    zero_init_output: bool = False
 
 
 @dataclass(kw_only=True)
@@ -59,6 +60,8 @@ class MLPNetworkCfg:
     hidden_dims: list[int] = field(default_factory=lambda: [256, 256])
     activation: str = "elu"
     obs_normalization: bool = False
+    layer_norm: bool | None = None
+    num_ensembles: int | None = None
     distribution_cfg: (
         GaussianDistributionCfg | SquashedGaussianDistributionCfg | CategoricalValueDistributionCfg | dict | None
     ) = None

@@ -6,23 +6,24 @@
 from __future__ import annotations
 
 import copy
+
 import torch
+from rsl_rl.algorithms import FastSAC, FlashSAC
+from rsl_rl.algorithms.flash_sac import FlashSACPolicy
+from rsl_rl.env import VecEnv
+from rsl_rl.extensions import resolve_symmetry_config
 from tensordict import TensorDict
 from torch import nn
 
 from compositional_rsl_rl.loss import LossManager
 from compositional_rsl_rl.network import NetworkManager
-from rsl_rl.algorithms import FlashSAC
-from rsl_rl.algorithms.flash_sac import FlashSACPolicy
-from rsl_rl.env import VecEnv
-from rsl_rl.extensions import resolve_symmetry_config
 
 
 class CompositionalFlashSAC(FlashSAC):
     """FlashSAC with explicit actor, critic and separate auxiliary optimizer ownership."""
 
-    @staticmethod
-    def construct_algorithm(obs: TensorDict, env: VecEnv, cfg: dict, device: str) -> FlashSAC:
+    @classmethod
+    def construct_algorithm(cls, obs: TensorDict, env: VecEnv, cfg: dict, device: str) -> FlashSAC:
         """Build disjoint trainable branches and retain the base algorithm's optimization schedule."""
         if cfg.get("torch_compile_mode"):
             raise ValueError("CompositionalFlashSAC currently supports eager training.")
@@ -85,10 +86,15 @@ class CompositionalFlashSAC(FlashSAC):
         if not callable(getattr(actor_distribution, "rsample_with_log_prob", None)):
             raise ValueError("FlashSAC requires a squashed Gaussian actor distribution with differentiable sampling.")
         FlashSAC.validate_models(
-            models["actor"], models["critic"], alg_cfg.get("num_bins", 101), alg_cfg.get("value_max", 5.0)
+            models["actor"],
+            models["critic"],
+            alg_cfg.get("num_bins", 101),
+            alg_cfg.get("value_max", 20.0 if issubclass(cls, FastSAC) else 5.0),
         )
         # Separate terms may supply detached features, but are not owned by the SAC optimizers.
-        algorithm = CompositionalFlashSAC(
+        if issubclass(cls, FastSAC):
+            alg_cfg["observation_shapes"] = {key: tuple(value.shape[1:]) for key, value in obs.items()}
+        algorithm = cls(
             models["actor"],
             models["critic"],
             env.num_actions,
@@ -109,11 +115,7 @@ class CompositionalFlashSAC(FlashSAC):
             ]
             if len({id(p) for p in params}) != len(params):
                 raise ValueError("A graph parameter has multiple optimizer owners.")
-            algorithm.optimizers[head] = torch.optim.Adam(
-                params,
-                lr=algorithm.initial_learning_rate,
-                fused=algorithm.device.type == "cuda",
-            )
+            algorithm.optimizers[head] = algorithm.make_optimizer(head, params)
             algorithm.schedulers[head] = torch.optim.lr_scheduler.LambdaLR(
                 algorithm.optimizers[head], algorithm._learning_rate_factor
             )
@@ -191,13 +193,34 @@ class CompositionalFlashSAC(FlashSAC):
     def get_policy(self) -> FlashSACPolicy:
         """Export the actor branch without critic or auxiliary-only dependencies."""
         actor = FlashSACGraph(self.networks, "actor", set(self.networks.dependencies("actor")))
-        return FlashSACPolicy(actor, self.obs_groups["actor"], self.action_support, concatenate_observations=False)
+        return FlashSACPolicy(
+            actor,
+            self.obs_groups["actor"],
+            self.action_support,
+            concatenate_observations=False,
+        )
+
+
+class CompositionalFastSAC(CompositionalFlashSAC, FastSAC):
+    """Holosoma FastSAC updates over the existing compositional graph."""
+
+    concatenate_policy_observations = False
+
+    def get_policy(self) -> nn.Module:
+        """Export the normalized actor branch and its action scale."""
+        return FastSAC.get_policy(self)
 
 
 class FlashSACGraph(NetworkManager):
     """Own one graph branch, sharing its registered terms with the composition manager."""
 
-    def __init__(self, manager: NetworkManager, head: str, owned: set[str], action_input: str | None = None) -> None:
+    def __init__(
+        self,
+        manager: NetworkManager,
+        head: str,
+        owned: set[str],
+        action_input: str | None = None,
+    ) -> None:
         """Retain branch ownership and the optional action-input connection."""
         nn.Module.__init__(self)
         self.head = head
@@ -223,7 +246,10 @@ class FlashSACGraph(NetworkManager):
         return graph
 
     def _raw_output(
-        self, observations: TensorDict, training: bool, actions: torch.Tensor | None = None
+        self,
+        observations: TensorDict,
+        training: bool,
+        actions: torch.Tensor | None = None,
     ) -> torch.Tensor:
         values = observations.clone(recurse=False)
         for name in self.dependencies(self.head):

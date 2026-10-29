@@ -8,13 +8,13 @@
 from __future__ import annotations
 
 import copy
-import torch
-from tensordict import TensorDict
-from torch import nn
 
+import torch
 from rsl_rl.models import CNNModel, MLPModel
 from rsl_rl.modules import HiddenState
 from rsl_rl.utils import resolve_class, unpad_trajectories
+from tensordict import TensorDict
+from torch import nn
 
 
 def load_pretrained(module: nn.Module, cfg: dict) -> None:
@@ -93,6 +93,9 @@ class NetworkManager(nn.Module):
         for name in self.order:
             term = copy.deepcopy(self.cfg[name])
             term.pop("input")
+            for option in ("layer_norm", "num_ensembles"):
+                if term.get(option) is None:
+                    term.pop(option, None)
             frozen = term.pop("frozen", False)
             pretrained = term.pop("pretrained_cfg", None)
             output_dim = term.pop("output_dim", None)
@@ -129,7 +132,8 @@ class NetworkManager(nn.Module):
                 with torch.no_grad():
                     if extra_dim:
                         sample[name] = model(
-                            sample, extra_input=torch.zeros(*sample.batch_size, extra_dim, device=sample.device)
+                            sample,
+                            extra_input=torch.zeros(*sample.batch_size, extra_dim, device=sample.device),
                         )
                     else:
                         sample[name] = model(sample)

@@ -67,3 +67,29 @@ class CompositionalFlashSACAlgorithmCfg:
     grad_reduce_bucket_mb: float = 25
     symmetry_cfg: dict | None = None
     curriculum_cfg: dict[str, SchedulerCfg | dict] | None = None
+
+
+@dataclass(kw_only=True)
+class CompositionalFastSACAlgorithmCfg:
+    """Holosoma FastSAC with separate termination flags and bounded replay."""
+
+    class_name: str = "compositional_rsl_rl:CompositionalFastSAC"
+    critic_action_input: str = "critic"
+    gamma: float = 0.97
+    target_tau: float = 0.125
+    actor_update_period: int = 4
+    learning_rate: float = 3e-4
+    num_bins: int = 101
+    value_max: float = 20.0
+    temperature_initial: float = 0.001
+    target_entropy_ratio: float = 0.0
+    use_autotune: bool = True
+    weight_decay: float = 0.001
+    max_grad_norm: float = 0.0
+    obs_normalization: bool = True
+    action_scale: float | list[float] = 1.0
+    use_amp: bool = False
+    amp_dtype: str = "bf16"
+    grad_reduce_bucket_mb: float = 25
+    symmetry_cfg: dict | None = None
+    curriculum_cfg: dict[str, SchedulerCfg | dict] | None = None

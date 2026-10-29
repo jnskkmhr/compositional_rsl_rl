@@ -9,7 +9,7 @@ description = "Simulator-independent network and loss composition for RSL-RL"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "BSD-3-Clause"}
-dependencies = ["rsl-rl-lib @ git+https://github.com/jnskkmhr/rsl_rl.git@31c3c41e244008e699604ad88b7bae877cb6cb22"]
+dependencies = ["rsl-rl-lib @ git+https://github.com/jnskkmhr/rsl_rl.git@22d529cd1f5add891d6d0ba4972d89de6e2064e1"]
 
 [project.urls]
 Repository = "https://github.com/jnskkmhr/compositional_rsl_rl"
