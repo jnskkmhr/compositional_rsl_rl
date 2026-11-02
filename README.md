@@ -1025,3 +1025,17 @@ python tests/reference/holosoma_parity.py --reference-root /path/to/holosoma_age
 
 The second command explicitly corrects the reference's pooled-variance formula;
 all other reference learning computations are loaded unchanged from `a7fe4c9`.
+
+### SuperMimic
+
+`CompositionalSuperMimicRunnerCfg` uses the native SuperMimic learner and standard
+runner. Configure deterministic `actor` and `critic` heads plus `goal_encoder`,
+`world_model`, and `event_model` feature terms through `NetworkCfg`. No separate
+actor/critic backbone classes are required. The actor consumes `policy` (encoded
+goal followed by flattened observation history), the goal encoder consumes `goal`,
+the world model consumes normalized `dynamics`, and the event head consumes
+normalized `events`. The critic consumes task-defined privileged `critic` features.
+SuperMimic owns actor/world-model normalization and fixed Gaussian collection noise;
+set `actor.distribution_cfg=None`. Trainable terms cannot be shared across its three
+optimizers. The task supplies differentiable rewards and physical state coordinates.
+Distributed batches are global and must divide evenly across ranks; replay stays local.

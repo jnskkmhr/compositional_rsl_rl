@@ -10,11 +10,15 @@ from .algorithm_cfg import (
     CompositionalFlashSACAlgorithmCfg,
     CompositionalPPOAlgorithmCfg,
     SchedulerCfg,
+    CompositionalSuperMimicAlgorithmCfg,
 )
 from .compositional_flash_sac import CompositionalFastSAC, CompositionalFlashSAC
 from .compositional_ppo import CompositionalPPO
+from .compositional_supermimic import CompositionalSuperMimic
 
 __all__ = [
+    "CompositionalSuperMimic",
+    "CompositionalSuperMimicAlgorithmCfg",
     "CompositionalFastSAC",
     "CompositionalFastSACAlgorithmCfg",
     "CompositionalFlashSAC",

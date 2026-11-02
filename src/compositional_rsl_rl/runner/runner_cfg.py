@@ -11,6 +11,7 @@ from compositional_rsl_rl.algorithm.algorithm_cfg import (
     CompositionalFastSACAlgorithmCfg,
     CompositionalFlashSACAlgorithmCfg,
     CompositionalPPOAlgorithmCfg,
+    CompositionalSuperMimicAlgorithmCfg,
 )
 from compositional_rsl_rl.env_interface import EnvInterfaceCfg
 from compositional_rsl_rl.loss.loss_cfg import LossesCfg
@@ -106,3 +107,17 @@ class CompositionalFastSACRunnerCfg(CompositionalOffPolicyRunnerCfg):
     save_interval: int = 1000
     experiment_name: str = "compositional_fast_sac"
     wandb_project: str = "compositional_fast_sac"
+
+
+@dataclass(kw_only=True)
+class CompositionalSuperMimicRunnerCfg(CompositionalRunnerCfg):
+    """Reuse the standard interaction loop; SuperMimic owns sequence replay and update cadence."""
+
+    algorithm: CompositionalSuperMimicAlgorithmCfg
+    history_length: int = 5
+    num_steps_per_env: int = 1
+    max_iterations: int = 36_000
+    init_at_random_ep_len: bool = False
+    save_interval: int = 1200
+    experiment_name: str = "compositional_supermimic"
+    wandb_project: str = "compositional_supermimic"

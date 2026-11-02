@@ -9,9 +9,11 @@ from .runner_cfg import (
     CompositionalFastSACRunnerCfg,
     CompositionalOffPolicyRunnerCfg,
     CompositionalRunnerCfg,
+    CompositionalSuperMimicRunnerCfg,
 )
 
 __all__ = [
+    "CompositionalSuperMimicRunnerCfg",
     "CompositionalFastSACRunnerCfg",
     "CompositionalOffPolicyRunnerCfg",
     "CompositionalRunnerCfg",
