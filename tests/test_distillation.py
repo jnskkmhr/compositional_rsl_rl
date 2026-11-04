@@ -272,7 +272,7 @@ def test_loss_schedule_transfers_behavior_cloning_to_whole_ppo_and_resumes(tmp_p
     env = DistillationEnvironment()
     obs = env.get_observations()
     cfg = configuration(tmp_path, obs)
-    cfg["algorithm"]["curriculum_cfg"] = {
+    cfg["curriculum_cfg"] = {
         name: {"type": "linear", "params": {"start_step": 0, "end_step": 8, "start_value": start, "end_value": end}}
         for name, start, end in [
             ("ppo_loss_weight", 0.0, 1.0),
@@ -325,7 +325,7 @@ def test_loss_schedule_rejects_unknown_targets_and_negative_weights(
     env = DistillationEnvironment()
     obs = env.get_observations()
     cfg = configuration(tmp_path, obs)
-    cfg["algorithm"]["curriculum_cfg"] = {
+    cfg["curriculum_cfg"] = {
         target: {
             "type": "linear",
             "params": {"start_step": 0, "end_step": 8, "start_value": 1.0, "end_value": end_value},

@@ -101,8 +101,10 @@ class CompositionalPPO(PPO):
         """Construct through the unmodified upstream OnPolicyRunner."""
         cfg = copy.deepcopy(cfg)
         cfg.setdefault("multi_gpu", None)
+        if "curriculum_cfg" in cfg["algorithm"]:
+            raise ValueError("Move algorithm.curriculum_cfg to the runner-level curriculum_cfg.")
         if cfg.get("networks") is None:
-            if cfg["algorithm"].pop("curriculum_cfg", None) or cfg["algorithm"].pop("ppo_loss_weight", 1.0) != 1.0:
+            if cfg.get("curriculum_cfg") or cfg["algorithm"].pop("ppo_loss_weight", 1.0) != 1.0:
                 raise ValueError("PPO loss scheduling requires compositional networks.")
             cfg["algorithm"]["class_name"] = "PPO"
             return PPO.construct_algorithm(obs, env, cfg, device)
@@ -124,6 +126,7 @@ class CompositionalPPO(PPO):
             storage,
             env=env,
             env_interface=cfg.get("env_interface"),
+            curriculum_cfg=cfg.get("curriculum_cfg"),
             device=device,
             multi_gpu_cfg=cfg.get("multi_gpu"),
             **alg_cfg,

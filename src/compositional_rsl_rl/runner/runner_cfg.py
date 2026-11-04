@@ -12,6 +12,7 @@ from compositional_rsl_rl.algorithm.algorithm_cfg import (
     CompositionalFlashSACAlgorithmCfg,
     CompositionalPPOAlgorithmCfg,
     CompositionalSuperMimicAlgorithmCfg,
+    SchedulerCfg,
 )
 from compositional_rsl_rl.env_interface import EnvInterfaceCfg
 from compositional_rsl_rl.loss.loss_cfg import LossesCfg
@@ -29,6 +30,8 @@ class CompositionalRunnerCfg:
     networks: NetworkCfg
     env_interface: EnvInterfaceCfg | None = None
     loss: LossesCfg = field(default_factory=LossesCfg)
+    curriculum_cfg: dict[str, SchedulerCfg | dict] | None = None
+    """Schedules for ppo_loss_weight and loss.<name>.weight, in completed rollout steps per environment."""
     algorithm: CompositionalPPOAlgorithmCfg = field(default_factory=CompositionalPPOAlgorithmCfg)
     class_name: str = "OnPolicyRunner"
     actor: None = None

@@ -117,13 +117,13 @@ applied only when adding it to the total optimization loss.
 
 ## Transition from imitation to PPO
 
-PPO's `curriculum_cfg` accepts schedules for `ppo_loss_weight` and
+The runner’s `curriculum_cfg` accepts schedules for `ppo_loss_weight` and
 `loss.<term_name>.weight`. Schedules set absolute coefficients (not multipliers
 on the original configured loss weight). Reuse the existing `SchedulerCfg` or
 its dictionary representation:
 
 ```python
-algorithm.curriculum_cfg = {
+runner_cfg.curriculum_cfg = {
     "ppo_loss_weight": {
         "type": "linear",
         "params": {"start_step": 48_000, "end_step": 240_000, "start_value": 0.1, "end_value": 1.0},
