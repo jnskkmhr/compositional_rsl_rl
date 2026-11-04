@@ -8,13 +8,13 @@
 from __future__ import annotations
 
 import copy
-import torch
-from tensordict import TensorDict
-from torch import nn
 
+import torch
 from rsl_rl.models import CNNModel, MLPModel
 from rsl_rl.modules import HiddenState
 from rsl_rl.utils import resolve_class, unpad_trajectories
+from tensordict import TensorDict
+from torch import nn
 
 
 def load_pretrained(module: nn.Module, cfg: dict) -> None:
@@ -40,7 +40,16 @@ class NetworkManager(nn.Module):
     require a different rollout-storage protocol and is rejected explicitly.
     """
 
-    def __init__(self, obs: TensorDict, cfg: dict, num_actions: int) -> None:
+    def __init__(
+        self,
+        obs: TensorDict,
+        cfg: dict,
+        num_actions: int,
+        *,
+        head_dims: dict[str, int] | None = None,
+        stochastic_actor: bool = True,
+        extra_input_dims: dict[str, int] | None = None,
+    ) -> None:
         """Validate the graph, infer input dimensions, and construct configured model terms."""
         super().__init__()
         self.cfg = {name: copy.deepcopy(term) for name, term in cfg.items() if term is not None}
@@ -84,26 +93,38 @@ class NetworkManager(nn.Module):
         for name in self.order:
             term = copy.deepcopy(self.cfg[name])
             term.pop("input")
+            for option in ("layer_norm", "num_ensembles"):
+                if term.get(option) is None:
+                    term.pop(option, None)
             frozen = term.pop("frozen", False)
             pretrained = term.pop("pretrained_cfg", None)
             output_dim = term.pop("output_dim", None)
             if name in ("actor", "critic"):
-                expected = num_actions if name == "actor" else 1
+                expected = (head_dims or {"actor": num_actions, "critic": 1})[name]
                 if output_dim is not None and output_dim != expected:
                     raise ValueError(f"Network '{name}' output_dim must be {expected} or None.")
                 output_dim = expected
             elif output_dim is None:
                 raise ValueError(f"Network '{name}' requires output_dim.")
+            extra_dim = (extra_input_dims or {}).get(name, 0)
+            if extra_dim:
+                term["extra_input_dim"] = extra_dim
             model_class, kwargs = resolve_class(term)
-            model = model_class(sample, {name: self.inputs[name]}, name, output_dim, **kwargs)
-            if not isinstance(model, MLPModel):
+            with torch.device(sample.device):
+                model = model_class(sample, {name: self.inputs[name]}, name, output_dim, **kwargs)
+            if not isinstance(model, MLPModel) and not (head_dims is not None and name in head_dims):
                 raise TypeError("Network classes must implement the RSL-RL MLPModel protocol.")
             if model.is_recurrent and name not in ("actor", "critic"):
                 raise ValueError("Recurrent intermediate terms are unsupported; use recurrent actor/critic heads.")
-            if name == "actor" and model.distribution is None:
+            if stochastic_actor and name == "actor" and model.distribution is None:
                 raise ValueError("The actor requires distribution_cfg for PPO.")
-            if name != "actor" and model.distribution is not None and (name == "critic" or not frozen):
-                raise ValueError("Only the actor or a frozen teacher can have an output distribution.")
+            if (
+                model.distribution is not None
+                and name != "actor"
+                and (stochastic_actor or name != "critic")
+                and not (frozen and name != "critic")
+            ):
+                raise ValueError("Only actor, off-policy critic, or frozen teacher terms can have an output distribution.")
             if pretrained is not None:
                 load_pretrained(model, pretrained)
             if frozen:
@@ -114,7 +135,13 @@ class NetworkManager(nn.Module):
             if name not in ("actor", "critic"):
                 model.eval()
                 with torch.no_grad():
-                    sample[name] = model(sample)
+                    if extra_dim:
+                        sample[name] = model(
+                            sample,
+                            extra_input=torch.zeros(*sample.batch_size, extra_dim, device=sample.device),
+                        )
+                    else:
+                        sample[name] = model(sample)
         self.train()
 
     def dependencies(self, name: str) -> list[str]:
@@ -142,7 +169,11 @@ class NetworkManager(nn.Module):
         stochastic_output: bool = False,
     ) -> torch.Tensor:
         model = self.terms[name]
-        kwargs = {"masks": masks, "hidden_state": hidden_state, "stochastic_output": stochastic_output}
+        kwargs = {
+            "masks": masks,
+            "hidden_state": hidden_state,
+            "stochastic_output": stochastic_output,
+        }
         if train_names is not None and name not in train_names:
             # Detached weights still propagate gradients to selected upstream terms.
             parameters = {key: value.detach() for key, value in model.named_parameters()}

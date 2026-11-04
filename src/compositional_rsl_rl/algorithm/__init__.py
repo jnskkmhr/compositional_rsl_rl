@@ -3,9 +3,27 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Compositional PPO and its simulator-independent configuration."""
+"""Compositional algorithms and simulator-independent configuration."""
 
-from .algorithm import CompositionalPPO
-from .algorithm_cfg import CompositionalPPOAlgorithmCfg
+from .algorithm_cfg import (
+    CompositionalFastSACAlgorithmCfg,
+    CompositionalFlashSACAlgorithmCfg,
+    CompositionalPPOAlgorithmCfg,
+    SchedulerCfg,
+    CompositionalSuperMimicAlgorithmCfg,
+)
+from .compositional_flash_sac import CompositionalFastSAC, CompositionalFlashSAC
+from .compositional_ppo import CompositionalPPO
+from .compositional_supermimic import CompositionalSuperMimic
 
-__all__ = ["CompositionalPPO", "CompositionalPPOAlgorithmCfg"]
+__all__ = [
+    "CompositionalSuperMimic",
+    "CompositionalSuperMimicAlgorithmCfg",
+    "CompositionalFastSAC",
+    "CompositionalFastSACAlgorithmCfg",
+    "CompositionalFlashSAC",
+    "CompositionalFlashSACAlgorithmCfg",
+    "CompositionalPPO",
+    "CompositionalPPOAlgorithmCfg",
+    "SchedulerCfg",
+]

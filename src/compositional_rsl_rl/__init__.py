@@ -3,9 +3,15 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Simulator-independent network and loss composition for unmodified RSL-RL."""
+"""Simulator-independent network and loss composition for RSL-RL."""
 
-from .algorithm import CompositionalPPO
+from .algorithm import CompositionalFastSAC, CompositionalFlashSAC, CompositionalPPO, CompositionalSuperMimic
 from .network import NetworkManager
 
-__all__ = ["CompositionalPPO", "NetworkManager"]
+__all__ = [
+    "CompositionalFastSAC",
+    "CompositionalFlashSAC",
+    "CompositionalPPO",
+    "CompositionalSuperMimic",
+    "NetworkManager",
+]

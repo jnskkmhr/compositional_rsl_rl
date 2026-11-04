@@ -8,6 +8,7 @@
 from .network import GraphModel, NetworkManager
 from .network_cfg import (
     ActorHeadCfg,
+    CategoricalValueDistributionCfg,
     CNNNetworkCfg,
     CriticHeadCfg,
     GaussianDistributionCfg,
@@ -16,6 +17,7 @@ from .network_cfg import (
     NetworkCfg,
     RecurrentActorHeadCfg,
     RecurrentCriticHeadCfg,
+    SquashedGaussianDistributionCfg,
     TensorNetworkCfg,
     TeacherPolicyCfg,
 )
@@ -24,6 +26,7 @@ from .tensor_network import TensorNetwork
 __all__ = [
     "ActorHeadCfg",
     "CNNNetworkCfg",
+    "CategoricalValueDistributionCfg",
     "CriticHeadCfg",
     "GaussianDistributionCfg",
     "GraphModel",
@@ -33,6 +36,7 @@ __all__ = [
     "NetworkManager",
     "RecurrentActorHeadCfg",
     "RecurrentCriticHeadCfg",
+    "SquashedGaussianDistributionCfg",
     "TensorNetwork",
     "TensorNetworkCfg",
     "TeacherPolicyCfg",

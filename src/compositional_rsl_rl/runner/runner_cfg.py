@@ -7,7 +7,12 @@
 
 from dataclasses import dataclass, field
 
-from compositional_rsl_rl.algorithm.algorithm_cfg import CompositionalPPOAlgorithmCfg
+from compositional_rsl_rl.algorithm.algorithm_cfg import (
+    CompositionalFastSACAlgorithmCfg,
+    CompositionalFlashSACAlgorithmCfg,
+    CompositionalPPOAlgorithmCfg,
+    CompositionalSuperMimicAlgorithmCfg,
+)
 from compositional_rsl_rl.env_interface import EnvInterfaceCfg
 from compositional_rsl_rl.loss.loss_cfg import LossesCfg
 from compositional_rsl_rl.network.network_cfg import NetworkCfg
@@ -46,3 +51,73 @@ class CompositionalRunnerCfg:
     load_run: str = ".*"
     load_checkpoint: str = "model_.*.pt"
     torch_compile_mode: str | None = None
+
+
+@dataclass(kw_only=True)
+class CompositionalOffPolicyRunnerCfg:
+    """Configure native FlashSAC collection and replay independently of PPO rollouts."""
+
+    networks: NetworkCfg
+    algorithm: CompositionalFlashSACAlgorithmCfg = field(default_factory=CompositionalFlashSACAlgorithmCfg)
+    loss: LossesCfg = field(default_factory=LossesCfg)
+    class_name: str = "OffPolicyRunner"
+    obs_groups: dict[str, list[str]] = field(default_factory=dict)
+    seed: int = 42
+    device: str = "cuda:0"
+    num_steps_per_env: int = 1
+    updates_per_step: int = 4
+    batch_size: int = 2048
+    replay_capacity: int = 1_000_000
+    replay_max_bytes: int = 3072 * 1024**2
+    warmup_transitions: int = 100_000
+    n_step: int = 3
+    replay_cfg: dict | None = None
+    max_iterations: int = 100_000
+    init_at_random_ep_len: bool = False
+    clip_actions: None = None
+    check_for_nan: bool = True
+    save_interval: int = 1000
+    experiment_name: str = "compositional_flash_sac"
+    run_name: str = ""
+    logger: str = "tensorboard"
+    wandb_project: str = "compositional_flash_sac"
+    resume: bool = False
+    load_run: str = ".*"
+    load_checkpoint: str = "model_.*.pt"
+    torch_compile_mode: None = None
+
+
+@dataclass(kw_only=True)
+class CompositionalFastSACRunnerCfg(CompositionalOffPolicyRunnerCfg):
+    """Holosoma collection schedule; replay capacity is 1024 transitions per environment.
+
+    Increase replay_max_bytes explicitly for large observations/environment counts.
+    Batch size is global across ranks, matching Holosoma.
+    """
+
+    algorithm: CompositionalFastSACAlgorithmCfg = field(default_factory=CompositionalFastSACAlgorithmCfg)
+    updates_per_step: int = 8
+    batch_size: int = 8192
+    n_step: int = 1
+    batch_size_is_global: bool = True
+    learning_starts: int = 10
+    warmup_transitions: int = 1
+    replay_steps_per_env: int = 1024
+    max_iterations: int = 50_000
+    save_interval: int = 1000
+    experiment_name: str = "compositional_fast_sac"
+    wandb_project: str = "compositional_fast_sac"
+
+
+@dataclass(kw_only=True)
+class CompositionalSuperMimicRunnerCfg(CompositionalRunnerCfg):
+    """Reuse the standard interaction loop; SuperMimic owns sequence replay and update cadence."""
+
+    algorithm: CompositionalSuperMimicAlgorithmCfg
+    history_length: int = 5
+    num_steps_per_env: int = 1
+    max_iterations: int = 36_000
+    init_at_random_ep_len: bool = False
+    save_interval: int = 1200
+    experiment_name: str = "compositional_supermimic"
+    wandb_project: str = "compositional_supermimic"

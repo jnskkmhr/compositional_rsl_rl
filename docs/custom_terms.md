@@ -28,7 +28,7 @@ you do not need to edit a registry, either manager, the runner, or this library.
 ## PointNet and Transformer
 
 ```python
-from compositional_rsl_rl.mdp.network import PointNetNetworkCfg, TransformerNetworkCfg
+from compositional_rsl_rl.components.network import PointNetNetworkCfg, TransformerNetworkCfg
 
 pointnet = PointNetNetworkCfg(
     input=["points"],  # One observation tensor: [batch, num_points, 4].
@@ -162,7 +162,7 @@ loss = SupervisedLossCfg(
 )
 ```
 
-The bundled `compositional_rsl_rl.mdp.loss:cosine_distance` is another example, useful when the direction
+The bundled `compositional_rsl_rl.components.loss:cosine_distance` is another example, useful when the direction
 of feature vectors is meaningful. It accepts `params={"eps": 1.0e-8}`. A direct callable is also
 accepted in `loss_fn`. Criteria receive matching prediction/target shapes after recurrent padding
 is removed; targets are detached. Return one finite scalar tensor connected to the prediction.

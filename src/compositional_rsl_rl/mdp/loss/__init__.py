@@ -3,8 +3,10 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Reusable stateless supervised criteria."""
+"""Compatibility import; use compositional_rsl_rl.components in new configurations."""
 
-from .loss import cosine_distance
+from compositional_rsl_rl.components.loss import (
+    cosine_distance,
+)
 
 __all__ = ["cosine_distance"]

@@ -12,7 +12,7 @@ The RSL-RL environment provides policy [batch, features], points [batch, points,
 from dataclasses import dataclass
 
 from compositional_rsl_rl.loss import LossesCfg, SupervisedLossCfg
-from compositional_rsl_rl.mdp.network import PointNetNetworkCfg, TransformerNetworkCfg
+from compositional_rsl_rl.components.network import PointNetNetworkCfg, TransformerNetworkCfg
 from compositional_rsl_rl.network import ActorHeadCfg, CriticHeadCfg, NetworkCfg, TensorNetworkCfg
 from compositional_rsl_rl.runner import CompositionalRunnerCfg
 

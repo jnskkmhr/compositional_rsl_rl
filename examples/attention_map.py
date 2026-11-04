@@ -8,7 +8,7 @@
 from dataclasses import dataclass
 
 from compositional_rsl_rl.algorithm import CompositionalPPOAlgorithmCfg
-from compositional_rsl_rl.mdp.network import AttentionMapNetworkCfg
+from compositional_rsl_rl.components.network import AttentionMapNetworkCfg
 from compositional_rsl_rl.network import ActorHeadCfg, CriticHeadCfg, NetworkCfg
 from compositional_rsl_rl.runner import CompositionalRunnerCfg
 

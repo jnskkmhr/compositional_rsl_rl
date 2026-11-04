@@ -1,6 +1,6 @@
 # Compositional RL
 
-An independently installable extension to **unmodified RSL-RL 5.5.1**. Network terms and loss terms are
+An independently installable extension to the **RSL-RL FlashSAC fork (`5.5.1+flashsac.4`)**. Network terms and loss terms are
 configured separately. Actor, critic, estimator, and decoder are peer terms; there is no special encoder
 container and no mandatory MLP appended to a separate composition model.
 
@@ -13,28 +13,32 @@ The GitHub repository, Python package, and installable distribution are named
 
 ## Installation and environment integration
 
-Clone the repository, then install from its root in your training environment:
+Install the FlashSAC branch directly into your training environment:
 
 ```bash
-git clone git@github.com:jnskkmhr/compositional_rsl_rl.git
-cd compositional_rsl_rl
-python -m pip install -e .
+python -m pip install 'git+https://github.com/jnskkmhr/compositional_rsl_rl.git@jnskkmhr/flash-sac'
 ```
 
-Or install the directory as its own project: `python -m pip install /path/to/compositional_rsl_rl`.
-The package depends on `rsl-rl-lib==5.5.1` and uses the upstream `OnPolicyRunner`.
+This automatically installs the compatible RSL-RL fork from the exact Git commit declared in
+`project.dependencies`. No sibling checkout or separate RSL-RL install is required.
+IsaacLab pins this package to a commit in its uv configuration and lockfile; `uv sync` fetches
+both libraries. IsaacLab does not need its own RSL-RL version or source override.
+
+For development, clone this branch and run `python -m pip install -e .`; its RSL-RL dependency
+is still installed automatically. PPO uses `OnPolicyRunner`; FlashSAC uses `OffPolicyRunner`.
+See [FlashSAC configuration](docs/flash_sac.md).
 The runtime and all configs import no simulator. Configs are standard Python dataclasses;
 serialize them with `dataclasses.asdict()`, or supply plain dictionaries using the same schema.
 An environment must implement the RSL-RL `VecEnv` protocol, usually through its existing adapter.
 The optional terrain checkpoint interface has been exercised with Isaac Lab's Newton moving-patch MPM task.
 mjlab has not been integration-tested here.
 
-Import configs from `compositional_rsl_rl.network`, `compositional_rsl_rl.loss`, `compositional_rsl_rl.algorithm`,
+For PPO, import configs from `compositional_rsl_rl.network`, `compositional_rsl_rl.loss`, `compositional_rsl_rl.algorithm`,
 and `compositional_rsl_rl.runner`. Keep the runner's `class_name="OnPolicyRunner"`; the algorithm config
 selects `class_name="compositional_rsl_rl:CompositionalPPO"`. Ordinary RSL-RL configs and checkpoints
 continue to use upstream PPO unchanged.
 
-For IsaacLab, select your task config through its existing `rsl_rl_cfg_entry_point` and retain the
+For PPO in IsaacLab, select your task config through its existing `rsl_rl_cfg_entry_point` and retain the
 `rsl_rl` backend. Its train/play/export scripts use the upstream runner and need no changes for this
 extension. Only its task example uses IsaacLab's `configclass` decorator to support its CLI utilities.
 
@@ -215,7 +219,7 @@ channels and validity in the fourth. This group must preserve its point and chan
 The term still outputs three values, so the actor references and supervision target stay compatible.
 
 ```python
-from compositional_rsl_rl.mdp.network import PointNetNetworkCfg
+from compositional_rsl_rl.components.network import PointNetNetworkCfg
 
 
 @configclass
@@ -240,7 +244,7 @@ This variant uses the same point-cloud observation and validity flag. Positional
 disabled because this example treats points as an unordered set.
 
 ```python
-from compositional_rsl_rl.mdp.network import TransformerNetworkCfg
+from compositional_rsl_rl.components.network import TransformerNetworkCfg
 
 
 @configclass
@@ -322,13 +326,13 @@ meaning. Clear or replace `params` when changing the criterion, since function a
 ### Use a reusable function by import path
 
 Cosine distance is useful when the direction of the supervised vectors is meaningful. It is
-provided in the library's `mdp/loss` collection:
+provided in the library's `components/loss` collection:
 
 ```python
 @configclass
 class MyCosinePPORunnerCfg(MyCompositionalPPORunnerCfg):
     loss = MyCompositionalPPORunnerCfg().loss
-    loss.estimator_loss.loss_fn = "compositional_rsl_rl.mdp.loss:cosine_distance"
+    loss.estimator_loss.loss_fn = "compositional_rsl_rl.components.loss:cosine_distance"
     loss.estimator_loss.params = {"eps": 1.0e-8}
 ```
 
@@ -482,7 +486,7 @@ src/compositional_rsl_rl/
 ├── runner/
 │   ├── __init__.py
 │   └── runner_cfg.py    # Configuration for upstream OnPolicyRunner
-└── mdp/                # Reusable network architectures and loss criteria
+└── components/                # Reusable network architectures and loss criteria
     ├── network/        # pointnet.py, transformer.py, attention_map.py, network_cfg.py
     └── loss/           # loss.py
 ```
@@ -508,8 +512,8 @@ same configs; the full example preserves its configuration utilities without cou
 
 ## Reusable custom terms
 
-Use `compositional_rsl_rl.mdp.network` for the bundled PointNet, Transformer, and AME terms, and
-`compositional_rsl_rl.mdp.loss` for reusable criteria. Managers and common config contracts stay in
+Use `compositional_rsl_rl.components.network` for the bundled PointNet, Transformer, and AME terms, and
+`compositional_rsl_rl.components.loss` for reusable criteria. Managers and common config contracts stay in
 `compositional_rsl_rl.network` and `compositional_rsl_rl.loss`. Task-specific implementations can live in
 `your_project.mdp` and be selected with `class_name="your_project.module:YourNetwork"` or a loss
 function import path; no manager registration is needed.
@@ -541,7 +545,7 @@ Save it as a task agent config and select `MyCompositionalPPORunnerCfg` through 
 
 from compositional_rsl_rl.algorithm import CompositionalPPOAlgorithmCfg
 from compositional_rsl_rl.loss import LossesCfg
-from compositional_rsl_rl.mdp.network import AttentionMapNetworkCfg
+from compositional_rsl_rl.components.network import AttentionMapNetworkCfg
 from compositional_rsl_rl.network import ActorHeadCfg, CriticHeadCfg, NetworkCfg
 from compositional_rsl_rl.runner import CompositionalRunnerCfg
 from isaaclab.utils.configclass import configclass
@@ -921,7 +925,7 @@ Recurrent JIT retains upstream batch-one internal state and its `reset()` method
 
 ## Compatibility boundaries and maintenance
 
-- Supported upstream dependency: **RSL-RL 5.5.1**, pinned deliberately. This is not a promise of compatibility
+- Supported dependency: **RSL-RL `5.5.1+flashsac.4`**, the commit-pinned FlashSAC fork of 5.5.1. This is not a promise of compatibility
   with every past/future RSL-RL or IsaacLab version.
 - Configs use standard dataclasses. Only the IsaacLab task example uses its `configclass` decorator
   to support its task configuration and CLI utilities. The inspected train/play/export backend selects
@@ -959,3 +963,87 @@ to supervise selected student actions alongside PPO. Each teacher can use differ
 observation groups and a separate actor checkpoint. See the
 [distillation guide](docs/distillation.md) and
 [29-action locomotion/manipulation example](examples/multi_teacher_distillation.py).
+
+## Holosoma FastSAC
+
+This `jnskkmhr/holosoma` branch pins the matching RSL-RL FastSAC commit, so
+installing it pulls both implementations. Existing IsaacLab tasks continue
+selecting FlashSAC until their agent configuration is changed explicitly.
+
+FastSAC uses ordinary heads with independent MLPs, LayerNorm and configurable
+output distributions. Observation normalization belongs to the learner, keeping
+critic actions outside the observation statistics. For the usual vector groups:
+
+```python
+from compositional_rsl_rl.algorithm import CompositionalFastSACAlgorithmCfg
+from compositional_rsl_rl.network import ActorHeadCfg, CriticHeadCfg, NetworkCfg
+from compositional_rsl_rl.runner import CompositionalFastSACRunnerCfg
+
+cfg = CompositionalFastSACRunnerCfg(
+    networks=NetworkCfg(
+        actor=ActorHeadCfg(
+            input=["policy", "command"],
+            hidden_dims=[512, 256, 128],
+            activation="swish",
+            layer_norm=True,
+            distribution_cfg=ActorHeadCfg.SquashedGaussianDistributionCfg(
+                log_std_min=-5.0, log_std_max=0.0, zero_init_output=True,
+            ),
+        ),
+        critic=CriticHeadCfg(
+            input=["critic", "command", "privileged"],
+            hidden_dims=[768, 384, 192],
+            activation="swish",
+            layer_norm=True,
+            num_ensembles=2,
+            distribution_cfg=CriticHeadCfg.CategoricalValueDistributionCfg(
+                num_bins=101, value_min=-20.0, value_max=20.0,
+            ),
+        ),
+    ),
+    algorithm=CompositionalFastSACAlgorithmCfg(),
+)
+```
+
+The learner appends `env.num_actions` to the critic input internally. `action_scale`
+is a positive scalar or a per-action list in the environment's raw action units;
+use the same action order as the environment. It defaults to 1, without inferring
+joint limits from simulator-specific assets. For Holosoma's joint-limit bounds,
+supply `max(abs(lower-default), abs(upper-default)) / env_action_scale` per joint.
+
+The runner defaults to one vector step, eight critic updates, batch size 8192
+(global across ranks), one-step returns, 50,000 iterations and saving every 1,000
+iterations. Learning starts after vector step 11, following Holosoma's zero-based
+`global_step > 10` condition. Replay retains 1,024 transitions per environment;
+set `replay_max_bytes` for the observation sizes and environment count in use.
+It raises an error rather than silently shrinking replay. AMP is opt-in, with
+`amp_dtype="bf16"`; execution is eager rather than compiled.
+
+The replay-wraparound, simultaneous termination/timeout and pooled-variance bugs
+are not reproduced. Policy frequency 1 updates the actor every update. Symmetry
+pairs remain in the same minibatch. The old FlashSAC algorithms and configs remain
+available. FastSAC checkpoints are distinct from FlashSAC checkpoints.
+
+To check numerical parity with the pinned reference checkout:
+
+```bash
+python tests/reference/holosoma_parity.py --reference-root /path/to/holosoma_agent
+python tests/reference/holosoma_parity.py --reference-root /path/to/holosoma_agent --normalize-obs
+```
+
+The second command explicitly corrects the reference's pooled-variance formula;
+all other reference learning computations are loaded unchanged from `a7fe4c9`.
+
+### SuperMimic
+
+`CompositionalSuperMimicRunnerCfg` uses the native SuperMimic learner and standard
+runner. Configure deterministic `actor` and `critic` heads plus `goal_encoder`,
+`world_model`, and `event_model` feature terms through `NetworkCfg`. No separate
+actor/critic backbone classes are required. The actor consumes `policy` (encoded
+goal followed by flattened observation history), the goal encoder consumes `goal`,
+the world model consumes normalized `dynamics`, and the event head consumes
+normalized `events`. The critic consumes task-defined privileged `critic` features.
+SuperMimic owns actor/world-model normalization and fixed Gaussian collection noise;
+set `actor.distribution_cfg=None`. Trainable terms cannot be shared across its three
+optimizers. The task supplies differentiable rewards and physical state coordinates.
+Distributed batches are global and must divide evenly across ranks; replay stays local.
