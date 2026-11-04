@@ -114,3 +114,53 @@ recurrent students, two-worker CPU/Gloo training, full-checkpoint resume, mappin
 mismatch rejection, and student-only TorchScript export. Training logs report each
 unweighted teacher criterion as `loss/<term_name>`; the configured weight is
 applied only when adding it to the total optimization loss.
+
+## Transition from imitation to PPO
+
+PPO's `curriculum_cfg` accepts schedules for `policy_loss_weight` and
+`loss.<term_name>.weight`. Schedules set absolute coefficients (not multipliers
+on the original configured loss weight). Reuse the existing `SchedulerCfg` or
+its dictionary representation:
+
+```python
+algorithm.curriculum_cfg = {
+    "policy_loss_weight": {
+        "type": "linear",
+        "params": {"start_step": 48_000, "end_step": 240_000, "start_value": 0.1, "end_value": 1.0},
+    },
+    "loss.locomotion.weight": {
+        "type": "linear",
+        "params": {"start_step": 48_000, "end_step": 240_000, "start_value": 1.0, "end_value": 0.1},
+    },
+    "loss.manipulation.weight": {
+        "type": "linear",
+        "params": {"start_step": 48_000, "end_step": 240_000, "start_value": 1.0, "end_value": 0.1},
+    },
+}
+```
+
+The objective is `policy_loss_weight * (surrogate - entropy_coef * entropy)
++ value_loss_coef * value_loss + sum(weight_i * distillation_i)`, plus the
+existing independently weighted symmetry/RND terms. The critic continues
+learning while policy improvement is small. Loss magnitudes and gradients differ;
+these coefficients do not guarantee a particular ratio of parameter updates.
+
+Steps count completed rollout control steps **per environment**, advancing once
+after each successful PPO update by `num_steps_per_env`. They do not count
+minibatches, physics substeps, or total samples across environments/GPUs. Thus the
+example holds its initial weights for 2,000 updates and reaches its final weights
+at 10,000 updates when `num_steps_per_env=24`. Linear schedules clamp outside
+their interval; `type="discrete"` with `params={"steps": [...], "values": [...]}`
+provides abrupt stages instead.
+
+Weights remain fixed throughout each PPO update and are reported as
+`weight/policy` and `weight/<loss_name>` in the runner loss metrics. Zero-weight
+teacher terms are not evaluated. Ordinary checkpoint resume restores schedule
+progress; a weights-only load with `iteration=False` retains the new run's
+progress. Older checkpoints without the counter infer it from `(iter + 1) *
+num_steps_per_env`, or start at zero if no iteration metadata exists. Schedule
+definitions come from the current configuration, so changing them on resume
+intentionally changes the coefficients at the restored step.
+
+With no curriculum and the default `policy_loss_weight=1.0`, existing fixed-weight
+PPO behavior is preserved.

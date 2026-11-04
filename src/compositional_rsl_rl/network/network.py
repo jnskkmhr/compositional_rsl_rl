@@ -124,7 +124,9 @@ class NetworkManager(nn.Module):
                 and (stochastic_actor or name != "critic")
                 and not (frozen and name != "critic")
             ):
-                raise ValueError("Only actor, off-policy critic, or frozen teacher terms can have an output distribution.")
+                raise ValueError(
+                    "Only actor, off-policy critic, or frozen teacher terms can have an output distribution."
+                )
             if pretrained is not None:
                 load_pretrained(model, pretrained)
             if frozen:
@@ -234,7 +236,14 @@ class NetworkManager(nn.Module):
     def update_normalization(self, obs: TensorDict) -> None:
         """Update each term once after all optimizers have consumed the rollout."""
         values = obs.clone(recurse=False)
+        # Frozen teacher leaves have no normalizer to update; evaluate frozen terms only
+        # when a trainable consumer needs their features for its own normalization.
+        required = {
+            dependency for name in self.terms if name not in self.frozen for dependency in self.dependencies(name)
+        }
         for name in self.order:
+            if name not in required:
+                continue
             model = self.terms[name]
             if name not in self.frozen:
                 model.update_normalization(values)

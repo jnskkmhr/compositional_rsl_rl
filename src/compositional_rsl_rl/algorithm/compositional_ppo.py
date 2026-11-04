@@ -12,6 +12,7 @@ integration point synchronized when upgrading the dependency; task-specific algo
 from __future__ import annotations
 
 import copy
+import math
 import warnings
 
 import torch
@@ -21,6 +22,7 @@ from rsl_rl.extensions import resolve_rnd_config, resolve_symmetry_config
 from rsl_rl.models import MLPModel
 from rsl_rl.storage import RolloutStorage
 from rsl_rl.utils import (
+    ParameterScheduler,
     reduce_gradients_in_buckets,
     resolve_class,
     resolve_obs_groups,
@@ -44,6 +46,8 @@ class CompositionalPPO(PPO):
         storage: RolloutStorage,
         env: VecEnv | None = None,
         env_interface: dict | None = None,
+        policy_loss_weight: float = 1.0,
+        curriculum_cfg: dict | None = None,
         **kwargs: object,
     ) -> None:
         """Create unique parameter ownership and retain the standard PPO rollout interface."""
@@ -57,6 +61,20 @@ class CompositionalPPO(PPO):
             self.env_interface.capture()
         self.networks = networks
         self.losses = LossManager(networks, losses, set(storage.observations.keys()))
+        if not math.isfinite(policy_loss_weight) or policy_loss_weight < 0:
+            raise ValueError("policy_loss_weight must be finite and nonnegative.")
+        self.policy_loss_weight = policy_loss_weight
+        self.loss_schedule_step = 0
+        self.loss_schedulers = {}
+        allowed = {"policy_loss_weight"} | {f"loss.{name}.weight" for name in self.losses.terms}
+        for name, schedule_cfg in (curriculum_cfg or {}).items():
+            if name not in allowed:
+                raise ValueError(f"Unknown PPO curriculum target '{name}'; expected one of {sorted(allowed)}.")
+            scheduler = ParameterScheduler(**schedule_cfg)
+            if any(value < 0 for value in scheduler.values):
+                raise ValueError(f"Loss schedule '{name}' requires nonnegative weights.")
+            self.loss_schedulers[name] = scheduler
+        self._apply_loss_schedules()
         self.actor = self._raw_actor = GraphModel(networks, "actor")
         self.critic = self._raw_critic = GraphModel(networks, "critic")
         active = set(networks.dependencies("actor")) | set(networks.dependencies("critic"))
@@ -84,6 +102,8 @@ class CompositionalPPO(PPO):
         cfg = copy.deepcopy(cfg)
         cfg.setdefault("multi_gpu", None)
         if cfg.get("networks") is None:
+            if cfg["algorithm"].pop("curriculum_cfg", None) or cfg["algorithm"].pop("policy_loss_weight", 1.0) != 1.0:
+                raise ValueError("PPO loss scheduling requires compositional networks.")
             cfg["algorithm"]["class_name"] = "PPO"
             return PPO.construct_algorithm(obs, env, cfg, device)
         _, alg_cfg = resolve_class(cfg["algorithm"])
@@ -110,6 +130,15 @@ class CompositionalPPO(PPO):
         )
         algorithm.compile(cfg.get("torch_compile_mode"))
         return algorithm
+
+    def _apply_loss_schedules(self) -> None:
+        """Evaluate once per PPO update, independent of minibatch count and GPU/environment count."""
+        for name, scheduler in self.loss_schedulers.items():
+            value = scheduler(self.loss_schedule_step)
+            if name == "policy_loss_weight":
+                self.policy_loss_weight = value
+            else:
+                self.losses.terms[name[len("loss.") : -len(".weight")]]["weight"] = value
 
     def train_mode(self) -> None:
         """Train all terms, including loss-only heads; frozen terms remain in eval mode."""
@@ -141,6 +170,7 @@ class CompositionalPPO(PPO):
         """Save networks, optimizers, and the environment control-step counter when available."""
         checkpoint = super().save()
         checkpoint.update(
+            loss_schedule_step=self.loss_schedule_step,
             network_state_dict=self.networks.state_dict(),
             loss_optimizer_state_dict={
                 name: optimizer.state_dict() for name, optimizer in self.losses.optimizers.items()
@@ -201,6 +231,11 @@ class CompositionalPPO(PPO):
             if restore_optimizer:
                 for name, optimizer in self.losses.optimizers.items():
                     optimizer.load_state_dict(loaded_dict["loss_optimizer_state_dict"][name])
+        if result:
+            self.loss_schedule_step = loaded_dict.get(
+                "loss_schedule_step", (loaded_dict.get("iter", -1) + 1) * self.storage.num_transitions_per_env
+            )
+            self._apply_loss_schedules()
         if result and hasattr(self._env, "common_step_counter"):
             state = loaded_dict.get("environment_training_state")
             if state is not None:
@@ -289,6 +324,7 @@ class CompositionalPPO(PPO):
 
     def update(self) -> dict[str, float]:
         """Run optimization epochs over stored batches and return mean losses."""
+        self._apply_loss_schedules()
         mean_loss_terms = {}
         mean_value_loss = 0
         mean_surrogate_loss = 0
@@ -394,7 +430,11 @@ class CompositionalPPO(PPO):
                 else:
                     value_loss = (batch.returns - values).pow(2).mean()
 
-                loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy.mean()
+                loss = (
+                    self.policy_loss_weight * surrogate_loss
+                    + self.value_loss_coef * value_loss
+                    - self.policy_loss_weight * self.entropy_coef * entropy.mean()
+                )
 
                 for joint_loss in joint_losses:
                     loss = loss + joint_loss
@@ -475,6 +515,11 @@ class CompositionalPPO(PPO):
             loss_dict["symmetry"] = mean_symmetry_loss
 
         loss_dict.update({f"loss/{name}": value / num_updates for name, value in mean_loss_terms.items()})
+
+        if self.loss_schedulers:
+            loss_dict["weight/policy"] = float(self.policy_loss_weight)
+            loss_dict.update({f"weight/{name}": float(term["weight"]) for name, term in self.losses.terms.items()})
+        self.loss_schedule_step += self.storage.num_transitions_per_env
 
         # Clear the storage
         self.storage.clear()
