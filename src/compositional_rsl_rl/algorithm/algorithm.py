@@ -144,6 +144,16 @@ class CompositionalPPO(PPO):
             network_inputs=self.networks.inputs,
             frozen_networks=sorted(self.networks.frozen),
             loss_ownership={name: (sorted(term["trains"]), term["mode"]) for name, term in self.losses.terms.items()},
+            loss_bindings={
+                name: {
+                    key: term[key]
+                    for key in ("prediction", "target", "prediction_indices", "target_indices", "require_frozen_target")
+                }
+                for name, term in self.losses.terms.items()
+                if term["require_frozen_target"]
+                or term["prediction_indices"] is not None
+                or term["target_indices"] is not None
+            },
         )
         if hasattr(self._env, "common_step_counter"):
             checkpoint["environment_training_state"] = {
@@ -171,6 +181,10 @@ class CompositionalPPO(PPO):
                         raise ValueError(
                             f"Checkpoint {key} differs; load weights without optimizer state for transfer."
                         )
+                if loaded_dict.get("loss_bindings", {}) != expected["loss_bindings"]:
+                    raise ValueError(
+                        "Checkpoint loss_bindings differ; load weights without optimizer state for transfer."
+                    )
             if load_cfg is None or load_cfg.get("networks", False):
                 self.networks.load_state_dict(loaded_dict["network_state_dict"], strict=strict)
             result = super().load(loaded_dict, load_cfg, strict)

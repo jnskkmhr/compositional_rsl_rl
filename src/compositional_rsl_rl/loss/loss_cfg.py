@@ -21,6 +21,25 @@ class SupervisedLossCfg:
     learning_rate: float | None = None
     weight: float = 1.0
     params: dict = field(default_factory=dict)
+    prediction_indices: list[int] | None = None
+    """Ordered final-axis indices; None supervises the full prediction."""
+    target_indices: list[int] | None = None
+    """Ordered final-axis indices; None uses the full target."""
+    require_frozen_target: bool = False
+    """Require a network target whose entire dependency graph is frozen."""
+
+
+@dataclass(kw_only=True)
+class DistillationLossCfg(SupervisedLossCfg):
+    """Match student action means to one frozen teacher on the same rollout observations.
+
+    Declare one named loss per teacher, with its own target, action mapping, and weight.
+    Include shared student encoders in trains when they should also receive this gradient.
+    """
+
+    prediction: str = "actor"
+    trains: list[str] = field(default_factory=lambda: ["actor"])
+    require_frozen_target: bool = True
 
 
 @dataclass(kw_only=True)

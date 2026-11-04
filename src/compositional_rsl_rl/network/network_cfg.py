@@ -44,6 +44,18 @@ class MLPNetworkCfg:
 
 
 @dataclass(kw_only=True)
+class TeacherPolicyCfg(MLPNetworkCfg):
+    """Frozen feed-forward policy, including checkpoint normalizers and action distribution.
+
+    Set output_dim to the teacher's action count and pretrained_cfg to its checkpoint.
+    Inference uses deterministic action means, not samples from the distribution.
+    """
+
+    frozen: bool = True
+    distribution_cfg: GaussianDistributionCfg | dict | None = field(default_factory=GaussianDistributionCfg)
+
+
+@dataclass(kw_only=True)
 class ActorHeadCfg(MLPNetworkCfg):
     """Actor term whose output dimension is supplied by the environment."""
 

@@ -951,3 +951,11 @@ ordinary RSL-RL checkpoint compatibility, simulator-blocked dataclass training i
 and real IsaacLab config serialization when IsaacLab is installed. Terrain checkpoint tests cover
 restored placement, reset cleanup, layout validation, weights-only transfer, and per-rank terrain
 state under a rank-zero-only save.
+
+## Multiple teachers and PPO distillation
+
+Use frozen `TeacherPolicyCfg` network terms and one `DistillationLossCfg` per teacher
+to supervise selected student actions alongside PPO. Each teacher can use different
+observation groups and a separate actor checkpoint. See the
+[distillation guide](docs/distillation.md) and
+[29-action locomotion/manipulation example](examples/multi_teacher_distillation.py).

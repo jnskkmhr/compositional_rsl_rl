@@ -6,6 +6,6 @@
 """Loss evaluation, optimizer ownership, and loss configurations."""
 
 from .loss import LossManager
-from .loss_cfg import LossesCfg, SupervisedLossCfg
+from .loss_cfg import DistillationLossCfg, LossesCfg, SupervisedLossCfg
 
-__all__ = ["LossManager", "LossesCfg", "SupervisedLossCfg"]
+__all__ = ["DistillationLossCfg", "LossManager", "LossesCfg", "SupervisedLossCfg"]

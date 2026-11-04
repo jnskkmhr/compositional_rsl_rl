@@ -48,6 +48,22 @@ class LossManager:
             ancestors = set(networks.dependencies(prediction))
             if not set(trains).issubset(ancestors) or set(trains) & networks.frozen:
                 raise ValueError(f"Loss '{name}' trains must select unfrozen prediction dependencies.")
+            require_frozen_target = term.pop("require_frozen_target", False)
+            if require_frozen_target and (
+                target not in networks.terms or not set(networks.dependencies(target)).issubset(networks.frozen)
+            ):
+                raise ValueError(f"Loss '{name}' requires a fully frozen teacher network target.")
+            indices = {}
+            for key in ("prediction_indices", "target_indices"):
+                selection = term.pop(key, None)
+                if selection is not None and (
+                    not isinstance(selection, (list, tuple))
+                    or not selection
+                    or any(type(index) is not int or index < 0 for index in selection)
+                    or len(set(selection)) != len(selection)
+                ):
+                    raise ValueError(f"Loss '{name}' {key} must contain unique nonnegative integer indices.")
+                indices[key] = list(selection) if selection is not None else None
             mode = term.pop("optimizer", "joint")
             learning_rate = term.pop("learning_rate", None)
             if mode not in ("joint", "separate"):
@@ -80,6 +96,8 @@ class LossManager:
                 weight=weight,
                 func=func,
                 params=params,
+                require_frozen_target=require_frozen_target,
+                **indices,
             )
         for name, term in self.terms.items():
             if term["mode"] == "joint" and term["trains"] & self.owners.keys():
@@ -87,6 +105,15 @@ class LossManager:
         if {"actor", "critic"} & self.owners.keys():
             raise ValueError("Actor and critic heads must remain owned by the PPO optimizer.")
         networks.separate = set(self.owners)
+
+    @staticmethod
+    def _select(value: torch.Tensor, indices: list[int] | None, name: str, role: str) -> torch.Tensor:
+        """Select ordered action components without slicing environment or trajectory axes."""
+        if indices is None:
+            return value
+        if value.ndim < 2 or max(indices) >= value.shape[-1]:
+            raise ValueError(f"Loss '{name}' {role}_indices exceed {role} shape {tuple(value.shape)}.")
+        return value[..., indices]
 
     def _predict(self, name: str, batch: RolloutStorage.Batch, trains: set[str]) -> torch.Tensor:
         state = batch.hidden_states[0 if name == "actor" else 1] if name in ("actor", "critic") else None
@@ -111,6 +138,8 @@ class LossManager:
                 if batch.masks is not None:
                     target = unpad_trajectories(target, batch.masks)
             target = target.detach()
+            prediction = self._select(prediction, term["prediction_indices"], name, "prediction")
+            target = self._select(target, term["target_indices"], name, "target")
             if prediction.shape != target.shape:
                 raise ValueError(f"Loss '{name}' prediction {prediction.shape} and target {target.shape} must match.")
             value = term["func"](prediction, target, **term["params"])

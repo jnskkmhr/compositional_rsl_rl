@@ -102,8 +102,8 @@ class NetworkManager(nn.Module):
                 raise ValueError("Recurrent intermediate terms are unsupported; use recurrent actor/critic heads.")
             if name == "actor" and model.distribution is None:
                 raise ValueError("The actor requires distribution_cfg for PPO.")
-            if name != "actor" and model.distribution is not None:
-                raise ValueError("Only the actor can have an output distribution.")
+            if name != "actor" and model.distribution is not None and (name == "critic" or not frozen):
+                raise ValueError("Only the actor or a frozen teacher can have an output distribution.")
             if pretrained is not None:
                 load_pretrained(model, pretrained)
             if frozen:

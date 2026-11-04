@@ -17,6 +17,7 @@ from .network_cfg import (
     RecurrentActorHeadCfg,
     RecurrentCriticHeadCfg,
     TensorNetworkCfg,
+    TeacherPolicyCfg,
 )
 from .tensor_network import TensorNetwork
 
@@ -34,4 +35,5 @@ __all__ = [
     "RecurrentCriticHeadCfg",
     "TensorNetwork",
     "TensorNetworkCfg",
+    "TeacherPolicyCfg",
 ]
