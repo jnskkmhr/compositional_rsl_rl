@@ -39,10 +39,10 @@ class CompositionalPPOAlgorithmCfg:
     rnd_cfg: dict | None = None
     symmetry_cfg: dict | None = None
     grad_reduce_bucket_mb: float = 25
-    policy_loss_weight: float = 1.0
-    """Multiplier on PPO surrogate minus entropy; critic and symmetry keep their own coefficients."""
+    ppo_loss_weight: float = 1.0
+    """Multiplier on the complete PPO objective: surrogate, weighted value regression, and entropy."""
     curriculum_cfg: dict[str, SchedulerCfg | dict] | None = None
-    """Schedules for policy_loss_weight and loss.<name>.weight, in completed rollout steps per environment."""
+    """Schedules for ppo_loss_weight and loss.<name>.weight, in completed rollout steps per environment."""
 
 
 @dataclass(kw_only=True)

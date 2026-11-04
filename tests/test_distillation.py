@@ -266,8 +266,8 @@ def test_two_worker_distillation(tmp_path: Path) -> None:
     torch.multiprocessing.spawn(_distributed_worker, args=(str(tmp_path / "store"), cfg), nprocs=2, join=True)
 
 
-def test_loss_schedule_transfers_actor_learning_to_ppo_and_resumes(tmp_path: Path) -> None:
-    """The first update teaches mapped actions only; the last uses PPO without evaluating teachers."""
+def test_loss_schedule_transfers_behavior_cloning_to_whole_ppo_and_resumes(tmp_path: Path) -> None:
+    """A zero PPO weight disables value regression too; later updates train the actor and critic together."""
     torch.manual_seed(7)
     env = DistillationEnvironment()
     obs = env.get_observations()
@@ -275,7 +275,7 @@ def test_loss_schedule_transfers_actor_learning_to_ppo_and_resumes(tmp_path: Pat
     cfg["algorithm"]["curriculum_cfg"] = {
         name: {"type": "linear", "params": {"start_step": 0, "end_step": 8, "start_value": start, "end_value": end}}
         for name, start, end in [
-            ("policy_loss_weight", 0.0, 1.0),
+            ("ppo_loss_weight", 0.0, 1.0),
             ("loss.lower.weight", 2.0, 0.0),
             ("loss.upper.weight", 1.0, 0.0),
         ]
@@ -286,24 +286,26 @@ def test_loss_schedule_transfers_actor_learning_to_ppo_and_resumes(tmp_path: Pat
     critic_before = copy.deepcopy(algo.networks.terms["critic"].state_dict())
     rollout(algo, env)
     metrics = algo.update()
-    assert metrics["weight/policy"] == 0.0 and metrics["weight/lower"] == 2.0
+    assert metrics["weight/ppo"] == 0.0 and metrics["weight/lower"] == 2.0
     # Action 3 has no teacher: its output bias must not learn when the PPO policy term is zero.
     torch.testing.assert_close(actor.mlp[-1].bias[3], actor_before[3], atol=0, rtol=0)
     assert not torch.equal(actor.mlp[-1].bias[:3], actor_before[:3])
-    assert any(not torch.equal(v, critic_before[k]) for k, v in algo.networks.terms["critic"].state_dict().items())
+    for key, value in algo.networks.terms["critic"].state_dict().items():
+        torch.testing.assert_close(value, critic_before[key], atol=0, rtol=0)
     rollout(algo, env)
     metrics = algo.update()
-    assert metrics["weight/policy"] == 0.5 and metrics["weight/lower"] == 1.0 and metrics["weight/upper"] == 0.5
+    assert metrics["weight/ppo"] == 0.5 and metrics["weight/lower"] == 1.0 and metrics["weight/upper"] == 0.5
     assert not torch.equal(actor.mlp[-1].bias[3], actor_before[3])
+    assert any(not torch.equal(v, critic_before[k]) for k, v in algo.networks.terms["critic"].state_dict().items())
     checkpoint = algo.save()
     checkpoint["iter"] = 1
     resumed = CompositionalPPO.construct_algorithm(obs, env, cfg, "cpu")
     resumed.load(checkpoint, None, strict=True)
-    assert resumed.loss_schedule_step == 8 and resumed.policy_loss_weight == 1.0
+    assert resumed.loss_schedule_step == 8 and resumed.ppo_loss_weight == 1.0
     # A weights-only transfer starts the new schedule at zero.
     transfer = CompositionalPPO.construct_algorithm(obs, env, cfg, "cpu")
     transfer.load(checkpoint, {"networks": True, "iteration": False}, strict=True)
-    assert transfer.loss_schedule_step == 0 and transfer.policy_loss_weight == 0.0
+    assert transfer.loss_schedule_step == 0 and transfer.ppo_loss_weight == 0.0
 
     def reject_teacher_evaluation(module, args):
         raise AssertionError("Zero-weight teachers must not be evaluated")
@@ -312,11 +314,11 @@ def test_loss_schedule_transfers_actor_learning_to_ppo_and_resumes(tmp_path: Pat
         resumed.networks.terms[name].register_forward_pre_hook(reject_teacher_evaluation)
     rollout(resumed, env)
     metrics = resumed.update()
-    assert metrics["weight/policy"] == 1.0 and metrics["weight/lower"] == metrics["weight/upper"] == 0.0
+    assert metrics["weight/ppo"] == 1.0 and metrics["weight/lower"] == metrics["weight/upper"] == 0.0
     assert "loss/lower" not in metrics and "loss/upper" not in metrics
 
 
-@pytest.mark.parametrize("target,end_value", [("loss.missing.weight", 1.0), ("policy_loss_weight", -1.0)])
+@pytest.mark.parametrize("target,end_value", [("loss.missing.weight", 1.0), ("ppo_loss_weight", -1.0)])
 def test_loss_schedule_rejects_unknown_targets_and_negative_weights(
     tmp_path: Path, target: str, end_value: float
 ) -> None:

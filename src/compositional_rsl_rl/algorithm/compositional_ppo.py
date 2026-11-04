@@ -46,7 +46,7 @@ class CompositionalPPO(PPO):
         storage: RolloutStorage,
         env: VecEnv | None = None,
         env_interface: dict | None = None,
-        policy_loss_weight: float = 1.0,
+        ppo_loss_weight: float = 1.0,
         curriculum_cfg: dict | None = None,
         **kwargs: object,
     ) -> None:
@@ -61,12 +61,12 @@ class CompositionalPPO(PPO):
             self.env_interface.capture()
         self.networks = networks
         self.losses = LossManager(networks, losses, set(storage.observations.keys()))
-        if not math.isfinite(policy_loss_weight) or policy_loss_weight < 0:
-            raise ValueError("policy_loss_weight must be finite and nonnegative.")
-        self.policy_loss_weight = policy_loss_weight
+        if not math.isfinite(ppo_loss_weight) or ppo_loss_weight < 0:
+            raise ValueError("ppo_loss_weight must be finite and nonnegative.")
+        self.ppo_loss_weight = ppo_loss_weight
         self.loss_schedule_step = 0
         self.loss_schedulers = {}
-        allowed = {"policy_loss_weight"} | {f"loss.{name}.weight" for name in self.losses.terms}
+        allowed = {"ppo_loss_weight"} | {f"loss.{name}.weight" for name in self.losses.terms}
         for name, schedule_cfg in (curriculum_cfg or {}).items():
             if name not in allowed:
                 raise ValueError(f"Unknown PPO curriculum target '{name}'; expected one of {sorted(allowed)}.")
@@ -102,7 +102,7 @@ class CompositionalPPO(PPO):
         cfg = copy.deepcopy(cfg)
         cfg.setdefault("multi_gpu", None)
         if cfg.get("networks") is None:
-            if cfg["algorithm"].pop("curriculum_cfg", None) or cfg["algorithm"].pop("policy_loss_weight", 1.0) != 1.0:
+            if cfg["algorithm"].pop("curriculum_cfg", None) or cfg["algorithm"].pop("ppo_loss_weight", 1.0) != 1.0:
                 raise ValueError("PPO loss scheduling requires compositional networks.")
             cfg["algorithm"]["class_name"] = "PPO"
             return PPO.construct_algorithm(obs, env, cfg, device)
@@ -135,8 +135,8 @@ class CompositionalPPO(PPO):
         """Evaluate once per PPO update, independent of minibatch count and GPU/environment count."""
         for name, scheduler in self.loss_schedulers.items():
             value = scheduler(self.loss_schedule_step)
-            if name == "policy_loss_weight":
-                self.policy_loss_weight = value
+            if name == "ppo_loss_weight":
+                self.ppo_loss_weight = value
             else:
                 self.losses.terms[name[len("loss.") : -len(".weight")]]["weight"] = value
 
@@ -430,11 +430,8 @@ class CompositionalPPO(PPO):
                 else:
                     value_loss = (batch.returns - values).pow(2).mean()
 
-                loss = (
-                    self.policy_loss_weight * surrogate_loss
-                    + self.value_loss_coef * value_loss
-                    - self.policy_loss_weight * self.entropy_coef * entropy.mean()
-                )
+                ppo_loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy.mean()
+                loss = self.ppo_loss_weight * ppo_loss
 
                 for joint_loss in joint_losses:
                     loss = loss + joint_loss
@@ -517,7 +514,7 @@ class CompositionalPPO(PPO):
         loss_dict.update({f"loss/{name}": value / num_updates for name, value in mean_loss_terms.items()})
 
         if self.loss_schedulers:
-            loss_dict["weight/policy"] = float(self.policy_loss_weight)
+            loss_dict["weight/ppo"] = float(self.ppo_loss_weight)
             loss_dict.update({f"weight/{name}": float(term["weight"]) for name, term in self.losses.terms.items()})
         self.loss_schedule_step += self.storage.num_transitions_per_env
 
