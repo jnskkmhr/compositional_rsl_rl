@@ -148,7 +148,7 @@ class _OnnxRecurrentGraph(nn.Module):
         super().__init__()
         self.features = _GraphFeatures(manager, head, include_head=False)
         self.indices = [self.features.names.index(name) for name in manager.inputs[head]]
-        self.head = manager.terms[head].as_onnx(verbose)
+        self.head = manager.terms[head].as_onnx()
         self.input_size = self.features.input_size
         self.verbose = verbose
         self.eval()

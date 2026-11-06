@@ -1,6 +1,6 @@
 # Compositional RL
 
-An independently installable extension to the **RSL-RL FlashSAC fork (`5.5.1+flashsac.4`)**. Network terms and loss terms are
+An independently installable extension to the **RSL-RL compatibility fork (`5.5.2+supermimic.1`)**. Network terms and loss terms are
 configured separately. Actor, critic, estimator, and decoder are peer terms; there is no special encoder
 container and no mandatory MLP appended to a separate composition model.
 
@@ -13,16 +13,22 @@ The GitHub repository, Python package, and installable distribution are named
 
 ## Installation and environment integration
 
-Install the FlashSAC branch directly into your training environment:
+Install the compatibility branch directly into your training environment:
 
 ```bash
-python -m pip install 'git+https://github.com/jnskkmhr/compositional_rsl_rl.git@jnskkmhr/flash-sac'
+python -m pip install 'git+https://github.com/jnskkmhr/compositional_rsl_rl.git@sac-pr-enhancement-compatible'
 ```
 
 This automatically installs the compatible RSL-RL fork from the exact Git commit declared in
 `project.dependencies`. No sibling checkout or separate RSL-RL install is required.
 IsaacLab pins this package to a commit in its uv configuration and lockfile; `uv sync` fetches
 both libraries. IsaacLab does not need its own RSL-RL version or source override.
+
+This branch pins `rsl_rl:sac-pr-enhancement-compatible`, which merges the native SAC
+review branch into SuperMimic. Existing compositional PPO, teacher losses,
+SuperMimic, FlashSAC and FastSAC remain available. Native `rsl_rl.algorithms.SAC`
+is also available through the standard RSL-RL actor/Q-critic configuration; it is
+not a replacement for `CompositionalFlashSAC` or `CompositionalFastSAC` configs.
 
 For development, clone this branch and run `python -m pip install -e .`; its RSL-RL dependency
 is still installed automatically. PPO uses `OnPolicyRunner`; FlashSAC uses `OffPolicyRunner`.
